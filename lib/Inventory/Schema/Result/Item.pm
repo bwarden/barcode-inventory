@@ -117,6 +117,21 @@ __PACKAGE__->has_many(
   { cascade_copy => 0, cascade_delete => 0 },
 );
 
+=head2 items_tags
+
+Type: has_many
+
+Related object: L<Inventory::Schema::Result::ItemsTag>
+
+=cut
+
+__PACKAGE__->has_many(
+  "items_tags",
+  "Inventory::Schema::Result::ItemsTag",
+  { "foreign.item" => "self.id" },
+  { cascade_copy => 0, cascade_delete => 0 },
+);
+
 =head2 parent
 
 Type: belongs_to
@@ -138,8 +153,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-01 22:30:19
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:Ag1Z7W75AeY0YN+KGtFq6A
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-02 09:56:43
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:kvBDdrmTWE79zJljRhtx6g
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

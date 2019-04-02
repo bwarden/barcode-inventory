@@ -1,3 +1,5 @@
+// Originally from https://www.linuxquestions.org/questions/programming-9/read-from-a-usb-barcode-scanner-that-simulates-a-keyboard-495358/
+
 #include <stdio.h>
 #include <string.h>
 #include <dirent.h>
@@ -8,7 +10,7 @@
 
 #define VENDORID  0x0581
 #define PRODUCTID 0x0103
-#define SCN_BCD_SZ 15
+#define SCN_BCD_SZ BUFSIZ
 
 int scan_fd = -1;
 
@@ -18,10 +20,10 @@ int initScanner(){
 	struct dirent **files;
 	struct input_id id;
 
-	printf("Inicializa \n");
+	printf("Initializing\n");
 
 	count = scandir("/dev/input", &files, NULL, alphasort);
-	printf("Archivos: %i \n", count);
+	printf("Files: %i \n", count);
 	while( count>0 ){
 		count--;
 		if( scan_fd==-1 && strncmp(files[count]->d_name,"event",5)==0 ){
@@ -42,7 +44,7 @@ int initScanner(){
 				}
 			}
 			else{
-				fprintf(stderr,"Error opening %s",path);
+				fprintf(stderr,"Error opening %s\n",path);
 				perror("");
 			}
 		}
@@ -107,8 +109,9 @@ char keycodelist(int scancode){
 		case 0x30: ret ='b';break;
 		case 0x31: ret ='n';break;
 		case 0x32: ret ='m';break;
-		default: break;
+		default: ret ='?';break;
 	}
+	fprintf(stderr, "[0x%02X]\n", scancode);
 	return ret;
 }
 
@@ -147,9 +150,9 @@ char* readScanner(int *loopcond){
 
 int main(){
 	initScanner();
-	printf("Escaner Ok \n");
+	printf("Scanner Ok \n");
 	while(1){
 		printf("%s \n", readScanner(NULL));
-		printf("Sigiente Código... \n");
+		printf("Read code... \n");
 	}
 }

@@ -39,7 +39,7 @@ my @bpid = (0x0581, 0x0103); # barcode reader
 my $dbh = DBI->connect("dbi:SQLite:dbname=$db", '', '')
   or die "Couldn't open DB $db\n";
 
-$dbh->do('CREATE TABLE IF NOT EXISTS scans(id INTEGER PRIMARY KEY, code TEXT, type TEXT, source INTEGER, date_added DATETIME DEFAULT CURRENT_TIMESTAMP);');
+$dbh->do('CREATE TABLE IF NOT EXISTS scans(id INTEGER PRIMARY KEY, code TEXT, source INTEGER, claimed BOOLEAN NOT NULL DEFAULT 0, date_added DATETIME DEFAULT CURRENT_TIMESTAMP);');
 my $sth = $dbh->prepare('INSERT INTO scans (code, source) VALUES(?, ?);')
   or die $dbh->errstr;
  

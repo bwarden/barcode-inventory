@@ -25,10 +25,11 @@ use utf8;
 use Modern::Perl;
 
 use DBI;
+use FindBin qw($Bin);
 use IO::Select;
 use Linux::USBKeyboard;
 
-my $db = '/home/bwarden/src/barcode-scanner-input/barcodes.db';
+my $db = "$Bin/../data/barcodes.db";
 
 my $vendor_id  = 0x0581;
 my $product_id = 0x0103;

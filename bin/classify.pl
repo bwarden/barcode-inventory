@@ -26,9 +26,9 @@ use Business::Barcode::EAN13 qw(valid_barcode);
 use Business::ISBN;
 use Business::UPC;
 use DBI;
+use FindBin qw($Bin);
 
-
-my $db = '/home/bwarden/src/barcode-scanner-input/barcodes.db';
+my $db = "$Bin/../data/barcodes.db";
 
 my $dbh = DBI->connect("dbi:SQLite:dbname=$db", '', '')
   or die "Couldn't open DB $db\n";

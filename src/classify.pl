@@ -28,7 +28,7 @@ use Business::UPC;
 use DBI;
 use FindBin qw($Bin);
 
-my $db = "$Bin/../data/barcodes.db";
+my $db = "$Bin/../data/inventory.db";
 
 my $dbh = DBI->connect("dbi:SQLite:dbname=$db", '', '')
   or die "Couldn't open DB $db\n";

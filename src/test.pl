@@ -29,7 +29,7 @@ use FindBin qw($Bin);
 use IO::Select;
 use Linux::USBKeyboard;
 
-my $db = "$Bin/../data/barcodes.db";
+my $db = "$Bin/../data/inventory.db";
 
 my $vendor_id  = 0x0581;
 my $product_id = 0x0103;

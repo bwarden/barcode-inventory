@@ -38,14 +38,17 @@ $dbh->sqlite_enable_load_extension(1)
 $dbh->sqlite_load_extension('/usr/lib/sqlite3/pcre.so')
   or die "Couldn't load SQLite REGEXP engine";
 
-# $dbh->do('CREATE TABLE IF NOT EXISTS types(id INTEGER PRIMARY KEY, type TEXT, UNIQUE(type) ON CONFLICT IGNORE);');
-# $dbh->do('CREATE TABLE IF NOT EXISTS codes(id INTEGER PRIMARY KEY, code TEXT, type INTEGER, parent INTEGER, UNIQUE(code) ON CONFLICT IGNORE, FOREIGN KEY(type) REFERENCES types(id), FOREIGN KEY(parent) REFERENCES codes(id));');
-# $dbh->do('CREATE TRIGGER add_code BEFORE INSERT ON codes FOR EACH ROW BEGIN INSERT INTO types (type) VALUES(new.type); END;');
+# $dbh->do('CREATE TABLE IF NOT EXISTS code_types(id INTEGER PRIMARY KEY, type TEXT, UNIQUE(type) ON CONFLICT IGNORE);');
+# $dbh->do('CREATE TABLE IF NOT EXISTS codes(id INTEGER PRIMARY KEY, code TEXT, code_type INTEGER, parent INTEGER, UNIQUE(code) ON CONFLICT IGNORE, FOREIGN KEY(code_type) REFERENCES code_types(id), FOREIGN KEY(parent) REFERENCES codes(id));');
+# $dbh->do('CREATE TRIGGER add_code BEFORE INSERT ON codes FOR EACH ROW BEGIN INSERT INTO code_types (type) VALUES(new.type); END;');
 
 my $scan_sql = q(SELECT code FROM scans WHERE (LENGTH(code)=12 OR LENGTH(code)=8 OR LENGTH(code)=13) AND code REGEXP '^\d+$';);
+my $store_sql = q(INSERT INTO codes (code, code_type, parent) VALUES(?, (SELECT id FROM code_types WHERE type=? LIMIT 1), (SELECT id FROM codes WHERE code=? LIMIT 1)););
 
 my $scan_sth = $dbh->prepare($scan_sql)
   or die $dbh->errstr." while preparing ".$scan_sql;
+my $store_sth = $dbh->prepare($store_sql)
+  or die $dbh->errstr." while preparing ".$store_sql;
 
 $scan_sth->execute
   or die $scan_sth->errstr." while executing ".$scan_sql;
@@ -57,6 +60,8 @@ while (my $scan = $scan_sth->fetchrow_hashref) {
     # Maybe UPC-A
     if (my $upc = Business::UPC->new($code)) {
       if ($upc->is_valid) {
+        $store_sth->execute($code, 'UPC-A', '')
+          or die $store_sth->errstr." while executing ".$scan_sql;;
         print "UPC-A: ", $code, " -> ", $upc->as_upc, "\n";
         next CODE;
       }
@@ -66,10 +71,14 @@ while (my $scan = $scan_sth->fetchrow_hashref) {
     # Maybe EAN-13 OR ISBN
     my $isbn = Business::ISBN->new($code);
     if ($isbn && $isbn->is_valid) {
+      $store_sth->execute($code, 'ISBN-13', '')
+        or die $store_sth->errstr." while executing ".$scan_sql;;
       print "ISBN: ", $code, " -> ", $isbn->as_string, "\n";
       next CODE;
     }
     elsif (my $ean = valid_barcode($code)) {
+      $store_sth->execute($code, 'EAN-13', '')
+        or die $store_sth->errstr." while executing ".$scan_sql;;
       print "EAN-13: ", $code, "\n";
       next CODE;
     }
@@ -77,6 +86,10 @@ while (my $scan = $scan_sth->fetchrow_hashref) {
   elsif (length($code) == 8) {
     # Maybe UPC-E OR EAN-8
     if (my $upc = Business::UPC->type_e($code)) {
+      $store_sth->execute($upc->as_upc, 'UPC-A', '')
+        or die $store_sth->errstr." while executing ".$scan_sql;;
+      $store_sth->execute($code, 'UPC-E', $upc->as_upc)
+        or die $store_sth->errstr." while executing ".$scan_sql;;
       print "UPC-E: ", $code, " -> ", $upc->as_upc, "\n";
       next CODE;
     }

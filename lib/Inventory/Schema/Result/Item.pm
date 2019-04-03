@@ -72,17 +72,17 @@ __PACKAGE__->set_primary_key("id");
 
 =head1 RELATIONS
 
-=head2 codes
+=head2 gtins
 
 Type: has_many
 
-Related object: L<Inventory::Schema::Result::Code>
+Related object: L<Inventory::Schema::Result::Gtin>
 
 =cut
 
 __PACKAGE__->has_many(
-  "codes",
-  "Inventory::Schema::Result::Code",
+  "gtins",
+  "Inventory::Schema::Result::Gtin",
   { "foreign.item" => "self.id" },
   { cascade_copy => 0, cascade_delete => 0 },
 );
@@ -153,8 +153,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-02 09:56:43
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:kvBDdrmTWE79zJljRhtx6g
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-03 12:10:26
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:C3m9EXR39HxixrS3m8rgxw
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

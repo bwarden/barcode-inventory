@@ -29,13 +29,13 @@ __PACKAGE__->table("inventory");
   is_auto_increment: 1
   is_nullable: 0
 
-=head2 item
+=head2 item_id
 
   data_type: 'integer'
   is_foreign_key: 1
   is_nullable: 1
 
-=head2 location
+=head2 location_id
 
   data_type: 'integer'
   is_foreign_key: 1
@@ -46,9 +46,9 @@ __PACKAGE__->table("inventory");
 __PACKAGE__->add_columns(
   "id",
   { data_type => "integer", is_auto_increment => 1, is_nullable => 0 },
-  "item",
+  "item_id",
   { data_type => "integer", is_foreign_key => 1, is_nullable => 1 },
-  "location",
+  "location_id",
   { data_type => "integer", is_foreign_key => 1, is_nullable => 1 },
 );
 
@@ -77,7 +77,7 @@ Related object: L<Inventory::Schema::Result::Item>
 __PACKAGE__->belongs_to(
   "item",
   "Inventory::Schema::Result::Item",
-  { id => "item" },
+  { id => "item_id" },
   {
     is_deferrable => 0,
     join_type     => "LEFT",
@@ -97,7 +97,7 @@ Related object: L<Inventory::Schema::Result::Location>
 __PACKAGE__->belongs_to(
   "location",
   "Inventory::Schema::Result::Location",
-  { id => "location" },
+  { id => "location_id" },
   {
     is_deferrable => 0,
     join_type     => "LEFT",
@@ -107,8 +107,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-01 22:30:19
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:5F8UmbwgFH2qjgf3ILGa6A
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-03 15:25:32
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:1fOqHkGI9HMFUi1N1zU0mA
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

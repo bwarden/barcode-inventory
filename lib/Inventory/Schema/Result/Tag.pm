@@ -71,24 +71,24 @@ __PACKAGE__->add_unique_constraint("tag_unique", ["tag"]);
 
 =head1 RELATIONS
 
-=head2 items_tags
+=head2 item_tags
 
 Type: has_many
 
-Related object: L<Inventory::Schema::Result::ItemsTag>
+Related object: L<Inventory::Schema::Result::ItemTag>
 
 =cut
 
 __PACKAGE__->has_many(
-  "items_tags",
-  "Inventory::Schema::Result::ItemsTag",
-  { "foreign.tag" => "self.id" },
+  "item_tags",
+  "Inventory::Schema::Result::ItemTag",
+  { "foreign.tag_id" => "self.id" },
   { cascade_copy => 0, cascade_delete => 0 },
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-02 09:56:43
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:5lQC1/s+zQpi2+p8VxLoYg
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-03 15:25:32
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:HsxHuwYxPE9ter4dd2xYIg
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

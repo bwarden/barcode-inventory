@@ -39,7 +39,7 @@ __PACKAGE__->table("locations");
   data_type: 'text'
   is_nullable: 1
 
-=head2 parent
+=head2 parent_id
 
   data_type: 'integer'
   is_foreign_key: 1
@@ -54,7 +54,7 @@ __PACKAGE__->add_columns(
   { data_type => "text", is_nullable => 1 },
   "full_name",
   { data_type => "text", is_nullable => 1 },
-  "parent",
+  "parent_id",
   { data_type => "integer", is_foreign_key => 1, is_nullable => 1 },
 );
 
@@ -109,7 +109,7 @@ Related object: L<Inventory::Schema::Result::Inventory>
 __PACKAGE__->has_many(
   "inventories",
   "Inventory::Schema::Result::Inventory",
-  { "foreign.location" => "self.id" },
+  { "foreign.location_id" => "self.id" },
   { cascade_copy => 0, cascade_delete => 0 },
 );
 
@@ -124,7 +124,7 @@ Related object: L<Inventory::Schema::Result::Location>
 __PACKAGE__->has_many(
   "locations",
   "Inventory::Schema::Result::Location",
-  { "foreign.parent" => "self.id" },
+  { "foreign.parent_id" => "self.id" },
   { cascade_copy => 0, cascade_delete => 0 },
 );
 
@@ -139,7 +139,7 @@ Related object: L<Inventory::Schema::Result::Location>
 __PACKAGE__->belongs_to(
   "parent",
   "Inventory::Schema::Result::Location",
-  { id => "parent" },
+  { id => "parent_id" },
   {
     is_deferrable => 0,
     join_type     => "LEFT",
@@ -149,8 +149,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-01 22:30:19
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:Hk2Ip8koEu8k3XSqWcVioA
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-03 15:25:32
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:cCQGzXGiLBdxi1t/M4Ctkw
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

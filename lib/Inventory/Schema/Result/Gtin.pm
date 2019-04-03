@@ -29,7 +29,7 @@ __PACKAGE__->table("gtins");
   is_auto_increment: 1
   is_nullable: 0
 
-=head2 item
+=head2 item_id
 
   data_type: 'integer'
   is_foreign_key: 1
@@ -40,7 +40,7 @@ __PACKAGE__->table("gtins");
 __PACKAGE__->add_columns(
   "gtin",
   { data_type => "integer", is_auto_increment => 1, is_nullable => 0 },
-  "item",
+  "item_id",
   { data_type => "integer", is_foreign_key => 1, is_nullable => 1 },
 );
 
@@ -69,7 +69,7 @@ Related object: L<Inventory::Schema::Result::Item>
 __PACKAGE__->belongs_to(
   "item",
   "Inventory::Schema::Result::Item",
-  { id => "item" },
+  { id => "item_id" },
   {
     is_deferrable => 0,
     join_type     => "LEFT",
@@ -79,8 +79,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-03 12:10:26
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:o8ATEsnVnEEGgrnpuJDUJw
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-03 15:25:32
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:Z73lguRljbkdmK1PP2IVng
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

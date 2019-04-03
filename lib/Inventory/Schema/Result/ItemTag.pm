@@ -1,12 +1,12 @@
 use utf8;
-package Inventory::Schema::Result::ItemsTag;
+package Inventory::Schema::Result::ItemTag;
 
 # Created by DBIx::Class::Schema::Loader
 # DO NOT MODIFY THE FIRST PART OF THIS FILE
 
 =head1 NAME
 
-Inventory::Schema::Result::ItemsTag
+Inventory::Schema::Result::ItemTag
 
 =cut
 
@@ -15,11 +15,11 @@ use warnings;
 
 use base 'DBIx::Class::Core';
 
-=head1 TABLE: C<items_tags>
+=head1 TABLE: C<item_tags>
 
 =cut
 
-__PACKAGE__->table("items_tags");
+__PACKAGE__->table("item_tags");
 
 =head1 ACCESSORS
 
@@ -29,13 +29,13 @@ __PACKAGE__->table("items_tags");
   is_auto_increment: 1
   is_nullable: 0
 
-=head2 item
+=head2 item_id
 
   data_type: 'integer'
   is_foreign_key: 1
   is_nullable: 1
 
-=head2 tag
+=head2 tag_id
 
   data_type: 'integer'
   is_foreign_key: 1
@@ -46,9 +46,9 @@ __PACKAGE__->table("items_tags");
 __PACKAGE__->add_columns(
   "id",
   { data_type => "integer", is_auto_increment => 1, is_nullable => 0 },
-  "item",
+  "item_id",
   { data_type => "integer", is_foreign_key => 1, is_nullable => 1 },
-  "tag",
+  "tag_id",
   { data_type => "integer", is_foreign_key => 1, is_nullable => 1 },
 );
 
@@ -66,19 +66,19 @@ __PACKAGE__->set_primary_key("id");
 
 =head1 UNIQUE CONSTRAINTS
 
-=head2 C<item_tag_unique>
+=head2 C<item_id_tag_id_unique>
 
 =over 4
 
-=item * L</item>
+=item * L</item_id>
 
-=item * L</tag>
+=item * L</tag_id>
 
 =back
 
 =cut
 
-__PACKAGE__->add_unique_constraint("item_tag_unique", ["item", "tag"]);
+__PACKAGE__->add_unique_constraint("item_id_tag_id_unique", ["item_id", "tag_id"]);
 
 =head1 RELATIONS
 
@@ -93,7 +93,7 @@ Related object: L<Inventory::Schema::Result::Item>
 __PACKAGE__->belongs_to(
   "item",
   "Inventory::Schema::Result::Item",
-  { id => "item" },
+  { id => "item_id" },
   {
     is_deferrable => 0,
     join_type     => "LEFT",
@@ -113,7 +113,7 @@ Related object: L<Inventory::Schema::Result::Tag>
 __PACKAGE__->belongs_to(
   "tag",
   "Inventory::Schema::Result::Tag",
-  { id => "tag" },
+  { id => "tag_id" },
   {
     is_deferrable => 0,
     join_type     => "LEFT",
@@ -123,8 +123,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-02 09:56:43
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:92tMkiDgN10EGbph6qzYuw
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-03 15:25:32
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:mgl46SkRUvNSaroNfYdxrA
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

@@ -39,7 +39,7 @@ __PACKAGE__->table("items");
   data_type: 'text'
   is_nullable: 1
 
-=head2 parent
+=head2 parent_id
 
   data_type: 'integer'
   is_foreign_key: 1
@@ -54,7 +54,7 @@ __PACKAGE__->add_columns(
   { data_type => "text", is_nullable => 1 },
   "desc",
   { data_type => "text", is_nullable => 1 },
-  "parent",
+  "parent_id",
   { data_type => "integer", is_foreign_key => 1, is_nullable => 1 },
 );
 
@@ -83,7 +83,7 @@ Related object: L<Inventory::Schema::Result::Gtin>
 __PACKAGE__->has_many(
   "gtins",
   "Inventory::Schema::Result::Gtin",
-  { "foreign.item" => "self.id" },
+  { "foreign.item_id" => "self.id" },
   { cascade_copy => 0, cascade_delete => 0 },
 );
 
@@ -98,7 +98,22 @@ Related object: L<Inventory::Schema::Result::Inventory>
 __PACKAGE__->has_many(
   "inventories",
   "Inventory::Schema::Result::Inventory",
-  { "foreign.item" => "self.id" },
+  { "foreign.item_id" => "self.id" },
+  { cascade_copy => 0, cascade_delete => 0 },
+);
+
+=head2 item_tags
+
+Type: has_many
+
+Related object: L<Inventory::Schema::Result::ItemTag>
+
+=cut
+
+__PACKAGE__->has_many(
+  "item_tags",
+  "Inventory::Schema::Result::ItemTag",
+  { "foreign.item_id" => "self.id" },
   { cascade_copy => 0, cascade_delete => 0 },
 );
 
@@ -113,22 +128,7 @@ Related object: L<Inventory::Schema::Result::Item>
 __PACKAGE__->has_many(
   "items",
   "Inventory::Schema::Result::Item",
-  { "foreign.parent" => "self.id" },
-  { cascade_copy => 0, cascade_delete => 0 },
-);
-
-=head2 items_tags
-
-Type: has_many
-
-Related object: L<Inventory::Schema::Result::ItemsTag>
-
-=cut
-
-__PACKAGE__->has_many(
-  "items_tags",
-  "Inventory::Schema::Result::ItemsTag",
-  { "foreign.item" => "self.id" },
+  { "foreign.parent_id" => "self.id" },
   { cascade_copy => 0, cascade_delete => 0 },
 );
 
@@ -143,7 +143,7 @@ Related object: L<Inventory::Schema::Result::Item>
 __PACKAGE__->belongs_to(
   "parent",
   "Inventory::Schema::Result::Item",
-  { id => "parent" },
+  { id => "parent_id" },
   {
     is_deferrable => 0,
     join_type     => "LEFT",
@@ -153,8 +153,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-03 12:10:26
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:C3m9EXR39HxixrS3m8rgxw
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-03 15:25:32
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:oc+q7VA5q1LJ54FIf1Fo/w
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

@@ -41,12 +41,7 @@ my $schema = Inventory::Schema->connect($dbd);
 my $parser = $schema->storage->datetime_parser;
 
 my $inittime = DateTime->from_epoch(epoch => 0);
-my $endtime  = $inittime->add(seconds => $TIMEOUT);
-
-$inittime = $inittime->subtract(days => 1);
-
-print $inittime;
-print $endtime;
+my $endtime  = $inittime->clone->add(seconds => $TIMEOUT);
 
 my $location;
 my $operation;
@@ -57,8 +52,8 @@ while(my $scans =
     {
       claimed => 0,
       date_added => {
-        '>=' => $parser->format_datetime($inittime),
-        '<'  => ($location && $operation) ? $parser->format_datetime($endtime ) : 'NOW',
+        '>' => $parser->format_datetime($inittime),
+        '<='  => ($location && $operation) ? $parser->format_datetime($endtime ) : 'NOW',
       },
     }
   )) {
@@ -70,10 +65,9 @@ while(my $scans =
   }
   else
   {
-
     SCAN:
     foreach my $scan ($scans->all) {
-      if (DateTime->compare($parser->parse_datetime($scan->date_added), $endtime) > 0) {
+      if ($location && DateTime->compare($parser->parse_datetime($scan->date_added), $endtime) > 0) {
         warn "Expired inventory operation at ".$scan->date_added;
         $location = '';
         $operation = '';
@@ -83,6 +77,12 @@ while(my $scans =
       if ($scan->code =~ m|^inventory://([^/]*)(?:/([^/]*))?|) {
         $location = $1;
         $operation = $2;
+
+        # Mark scan as claimed
+        $scan->update(
+          {
+            claimed => 1,
+          });
 
         if ($location && $operation) {
           warn "Starting $location $operation at ".$scan->date_added;
@@ -103,15 +103,28 @@ while(my $scans =
               });
 
             # Add/link item
-            if (! $gtin->item) {
+            my $item;
+            if (! $gtin->item_id) {
               warn "Creating item for $code";
-              my $item = $schema->resultset('Item')->create(
+              $item = $schema->resultset('Item')->find_or_create(
                 {
                   desc => $code,
+                },
+                {
+                  rows => 1,
                 });
               $gtin->update(
                 {
-                  item => $item->id,
+                  item_id => $item->id,
+                });
+            }
+            else {
+              $item = $schema->resultset('Item')->find(
+                {
+                  id => $gtin->item_id,
+                },
+                {
+                  rows => 1,
                 });
             }
 
@@ -125,18 +138,30 @@ while(my $scans =
               if ($operation eq 'add') {
                 my $inventory = $schema->resultset('Inventory')->create(
                   {
-                    item => $gtin->item,
-                    location => $loc->id,
+                    item_id => $gtin->item_id,
+                    location_id => $loc->id,
                   });
+                print "Added to       ", $loc->full_name, ": ",
+                $item->short_desc, "\n";
               }
 
-              if ($operation eq 'delete') {
-                my $inventory = $schema->resultset('Inventory')->find(
-                  {
-                    item => $gtin->item,
-                    location => $loc->id,
-                  });
-                $inventory->delete;
+              if ($operation eq 'delete' || $operation eq 'remove') {
+                if (my $inventory = $schema->resultset('Inventory')->find(
+                    {
+                      item_id => $gtin->item_id,
+                      location_id => $loc->id,
+                    },
+                    {
+                      rows => 1,
+                    },
+                  )) {
+                  $inventory->delete;
+                  print "Removed from ", $loc->full_name, ": ",
+                  $item->short_desc, "\n";
+                }
+                else {
+                  warn "No more ".$gtin->item->short_desc." in ".$loc->full_name;
+                }
               }
             }
 
@@ -152,8 +177,9 @@ while(my $scans =
       # Bump the time interval so we a) don't reconsider things we've already
       # tried, and b) allow new codes to push us along
       $inittime = $parser->parse_datetime($scan->date_added);
-      $endtime  = $inittime->add(seconds => $TIMEOUT);
+      $endtime  = $inittime->clone->add(seconds => $TIMEOUT);
     }
+    sleep 1;
   }
 }
 

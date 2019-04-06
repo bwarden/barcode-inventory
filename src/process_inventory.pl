@@ -52,7 +52,7 @@ while(my $scans =
     {
       claimed => 0,
       date_added => {
-        '>' => $parser->format_datetime($inittime),
+        '>=' => $parser->format_datetime($inittime),
         '<='  => ($location && $operation) ? $parser->format_datetime($endtime ) : 'NOW',
       },
     }

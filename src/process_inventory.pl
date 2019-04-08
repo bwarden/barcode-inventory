@@ -40,8 +40,9 @@ my $dbd = "dbi:SQLite:${db}";
 my $schema = Inventory::Schema->connect($dbd);
 my $parser = $schema->storage->datetime_parser;
 
-my $inittime = DateTime->from_epoch(epoch => 0);
-my $endtime  = $inittime->clone->add(seconds => $TIMEOUT);
+my $inittime  = DateTime->from_epoch(epoch => 0);
+my $endtime   = $inittime->clone->add(seconds => $TIMEOUT);
+my $lastrowid = 0;
 
 my $location;
 my $operation;
@@ -52,8 +53,11 @@ while(my $scans =
     {
       claimed => 0,
       date_added => {
-        '>=' => $parser->format_datetime($inittime),
+#        '>' => $parser->format_datetime($inittime),
         '<='  => ($location && $operation) ? $parser->format_datetime($endtime ) : 'NOW',
+      },
+      id => {
+        '>' => $lastrowid,
       },
     }
   )) {
@@ -108,7 +112,7 @@ while(my $scans =
               warn "Creating item for $code";
               $item = $schema->resultset('Item')->find_or_create(
                 {
-                  desc => $code,
+                  short_desc => $code,
                 },
                 {
                   rows => 1,
@@ -176,6 +180,7 @@ while(my $scans =
 
       # Bump the time interval so we a) don't reconsider things we've already
       # tried, and b) allow new codes to push us along
+      $lastrowid = $scan->id;
       $inittime = $parser->parse_datetime($scan->date_added);
       $endtime  = $inittime->clone->add(seconds => $TIMEOUT);
     }

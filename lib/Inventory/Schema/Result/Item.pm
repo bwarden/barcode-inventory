@@ -152,9 +152,24 @@ __PACKAGE__->belongs_to(
   },
 );
 
+=head2 patterns
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-03 15:25:32
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:oc+q7VA5q1LJ54FIf1Fo/w
+Type: has_many
+
+Related object: L<Inventory::Schema::Result::Pattern>
+
+=cut
+
+__PACKAGE__->has_many(
+  "patterns",
+  "Inventory::Schema::Result::Pattern",
+  { "foreign.item_id" => "self.id" },
+  { cascade_copy => 0, cascade_delete => 0 },
+);
+
+
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-14 18:44:53
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:m0z7dJJfTIgUwGeeHGfZTQ
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

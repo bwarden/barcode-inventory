@@ -25,8 +25,7 @@ __PACKAGE__->table("tags");
 
 =head2 id
 
-  data_type: 'integer'
-  is_auto_increment: 1
+  data_type: 'bigint'
   is_nullable: 0
 
 =head2 tag
@@ -38,7 +37,7 @@ __PACKAGE__->table("tags");
 
 __PACKAGE__->add_columns(
   "id",
-  { data_type => "integer", is_auto_increment => 1, is_nullable => 0 },
+  { data_type => "bigint", is_nullable => 0 },
   "tag",
   { data_type => "text", is_nullable => 1 },
 );
@@ -57,7 +56,7 @@ __PACKAGE__->set_primary_key("id");
 
 =head1 UNIQUE CONSTRAINTS
 
-=head2 C<tag_unique>
+=head2 C<idx_43364_sqlite_autoindex_tags_1>
 
 =over 4
 
@@ -67,7 +66,7 @@ __PACKAGE__->set_primary_key("id");
 
 =cut
 
-__PACKAGE__->add_unique_constraint("tag_unique", ["tag"]);
+__PACKAGE__->add_unique_constraint("idx_43364_sqlite_autoindex_tags_1", ["tag"]);
 
 =head1 RELATIONS
 
@@ -87,8 +86,8 @@ __PACKAGE__->has_many(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-03 15:25:32
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:HsxHuwYxPE9ter4dd2xYIg
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 11:55:51
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:5z4IqK95JECEf0qEUxxkog
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

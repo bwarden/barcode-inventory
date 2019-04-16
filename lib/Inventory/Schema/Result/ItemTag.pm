@@ -25,19 +25,18 @@ __PACKAGE__->table("item_tags");
 
 =head2 id
 
-  data_type: 'integer'
-  is_auto_increment: 1
+  data_type: 'bigint'
   is_nullable: 0
 
 =head2 item_id
 
-  data_type: 'integer'
+  data_type: 'bigint'
   is_foreign_key: 1
   is_nullable: 1
 
 =head2 tag_id
 
-  data_type: 'integer'
+  data_type: 'bigint'
   is_foreign_key: 1
   is_nullable: 1
 
@@ -45,11 +44,11 @@ __PACKAGE__->table("item_tags");
 
 __PACKAGE__->add_columns(
   "id",
-  { data_type => "integer", is_auto_increment => 1, is_nullable => 0 },
+  { data_type => "bigint", is_nullable => 0 },
   "item_id",
-  { data_type => "integer", is_foreign_key => 1, is_nullable => 1 },
+  { data_type => "bigint", is_foreign_key => 1, is_nullable => 1 },
   "tag_id",
-  { data_type => "integer", is_foreign_key => 1, is_nullable => 1 },
+  { data_type => "bigint", is_foreign_key => 1, is_nullable => 1 },
 );
 
 =head1 PRIMARY KEY
@@ -66,7 +65,7 @@ __PACKAGE__->set_primary_key("id");
 
 =head1 UNIQUE CONSTRAINTS
 
-=head2 C<item_id_tag_id_unique>
+=head2 C<idx_43379_sqlite_autoindex_item_tags_1>
 
 =over 4
 
@@ -78,7 +77,10 @@ __PACKAGE__->set_primary_key("id");
 
 =cut
 
-__PACKAGE__->add_unique_constraint("item_id_tag_id_unique", ["item_id", "tag_id"]);
+__PACKAGE__->add_unique_constraint(
+  "idx_43379_sqlite_autoindex_item_tags_1",
+  ["item_id", "tag_id"],
+);
 
 =head1 RELATIONS
 
@@ -123,8 +125,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-03 15:25:32
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:mgl46SkRUvNSaroNfYdxrA
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 11:55:51
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:CE6ANRTUVJrM+FYjz0rDBQ
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

@@ -25,8 +25,7 @@ __PACKAGE__->table("items");
 
 =head2 id
 
-  data_type: 'integer'
-  is_auto_increment: 1
+  data_type: 'bigint'
   is_nullable: 0
 
 =head2 short_desc
@@ -41,7 +40,7 @@ __PACKAGE__->table("items");
 
 =head2 parent_id
 
-  data_type: 'integer'
+  data_type: 'bigint'
   is_foreign_key: 1
   is_nullable: 1
 
@@ -49,13 +48,13 @@ __PACKAGE__->table("items");
 
 __PACKAGE__->add_columns(
   "id",
-  { data_type => "integer", is_auto_increment => 1, is_nullable => 0 },
+  { data_type => "bigint", is_nullable => 0 },
   "short_desc",
   { data_type => "text", is_nullable => 1 },
   "desc",
   { data_type => "text", is_nullable => 1 },
   "parent_id",
-  { data_type => "integer", is_foreign_key => 1, is_nullable => 1 },
+  { data_type => "bigint", is_foreign_key => 1, is_nullable => 1 },
 );
 
 =head1 PRIMARY KEY
@@ -168,8 +167,8 @@ __PACKAGE__->has_many(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-14 18:44:53
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:m0z7dJJfTIgUwGeeHGfZTQ
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 11:55:51
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:RQRi9lFXxEZVUqgDQYZDag
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

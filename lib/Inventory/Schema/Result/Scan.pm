@@ -25,8 +25,7 @@ __PACKAGE__->table("scans");
 
 =head2 id
 
-  data_type: 'integer'
-  is_auto_increment: 1
+  data_type: 'bigint'
   is_nullable: 0
 
 =head2 code
@@ -36,37 +35,39 @@ __PACKAGE__->table("scans");
 
 =head2 source
 
-  data_type: 'integer'
+  data_type: 'bigint'
   is_nullable: 1
 
 =head2 claimed
 
   data_type: 'boolean'
-  default_value: 0
-  is_nullable: 0
+  default_value: false
+  is_nullable: 1
 
 =head2 date_added
 
-  data_type: 'datetime'
+  data_type: 'timestamp with time zone'
   default_value: current_timestamp
   is_nullable: 1
+  original: {default_value => \"now()"}
 
 =cut
 
 __PACKAGE__->add_columns(
   "id",
-  { data_type => "integer", is_auto_increment => 1, is_nullable => 0 },
+  { data_type => "bigint", is_nullable => 0 },
   "code",
   { data_type => "text", is_nullable => 1 },
   "source",
-  { data_type => "integer", is_nullable => 1 },
+  { data_type => "bigint", is_nullable => 1 },
   "claimed",
-  { data_type => "boolean", default_value => 0, is_nullable => 0 },
+  { data_type => "boolean", default_value => \"false", is_nullable => 1 },
   "date_added",
   {
-    data_type     => "datetime",
+    data_type     => "timestamp with time zone",
     default_value => \"current_timestamp",
     is_nullable   => 1,
+    original      => { default_value => \"now()" },
   },
 );
 
@@ -83,8 +84,8 @@ __PACKAGE__->add_columns(
 __PACKAGE__->set_primary_key("id");
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-03 15:25:32
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:3XoT/OjDUNKy7cefw4AzWg
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 11:55:51
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:MrbcAMocbbciHQwIwWTp/w
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

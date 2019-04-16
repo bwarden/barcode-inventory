@@ -25,8 +25,7 @@ __PACKAGE__->table("locations");
 
 =head2 id
 
-  data_type: 'integer'
-  is_auto_increment: 1
+  data_type: 'bigint'
   is_nullable: 0
 
 =head2 short_name
@@ -41,7 +40,7 @@ __PACKAGE__->table("locations");
 
 =head2 parent_id
 
-  data_type: 'integer'
+  data_type: 'bigint'
   is_foreign_key: 1
   is_nullable: 1
 
@@ -49,13 +48,13 @@ __PACKAGE__->table("locations");
 
 __PACKAGE__->add_columns(
   "id",
-  { data_type => "integer", is_auto_increment => 1, is_nullable => 0 },
+  { data_type => "bigint", is_nullable => 0 },
   "short_name",
   { data_type => "text", is_nullable => 1 },
   "full_name",
   { data_type => "text", is_nullable => 1 },
   "parent_id",
-  { data_type => "integer", is_foreign_key => 1, is_nullable => 1 },
+  { data_type => "bigint", is_foreign_key => 1, is_nullable => 1 },
 );
 
 =head1 PRIMARY KEY
@@ -72,19 +71,7 @@ __PACKAGE__->set_primary_key("id");
 
 =head1 UNIQUE CONSTRAINTS
 
-=head2 C<full_name_unique>
-
-=over 4
-
-=item * L</full_name>
-
-=back
-
-=cut
-
-__PACKAGE__->add_unique_constraint("full_name_unique", ["full_name"]);
-
-=head2 C<short_name_unique>
+=head2 C<idx_43370_sqlite_autoindex_locations_1>
 
 =over 4
 
@@ -94,7 +81,19 @@ __PACKAGE__->add_unique_constraint("full_name_unique", ["full_name"]);
 
 =cut
 
-__PACKAGE__->add_unique_constraint("short_name_unique", ["short_name"]);
+__PACKAGE__->add_unique_constraint("idx_43370_sqlite_autoindex_locations_1", ["short_name"]);
+
+=head2 C<idx_43370_sqlite_autoindex_locations_2>
+
+=over 4
+
+=item * L</full_name>
+
+=back
+
+=cut
+
+__PACKAGE__->add_unique_constraint("idx_43370_sqlite_autoindex_locations_2", ["full_name"]);
 
 =head1 RELATIONS
 
@@ -149,8 +148,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-03 15:25:32
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:cCQGzXGiLBdxi1t/M4Ctkw
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 11:55:51
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:SSpIlm4UZlW7cpVjNeCvDg
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

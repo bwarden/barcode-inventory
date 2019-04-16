@@ -26,7 +26,9 @@ __PACKAGE__->table("item_tags");
 =head2 id
 
   data_type: 'bigint'
+  is_auto_increment: 1
   is_nullable: 0
+  sequence: 'item_tags_id_seq'
 
 =head2 item_id
 
@@ -44,7 +46,12 @@ __PACKAGE__->table("item_tags");
 
 __PACKAGE__->add_columns(
   "id",
-  { data_type => "bigint", is_nullable => 0 },
+  {
+    data_type         => "bigint",
+    is_auto_increment => 1,
+    is_nullable       => 0,
+    sequence          => "item_tags_id_seq",
+  },
   "item_id",
   { data_type => "bigint", is_foreign_key => 1, is_nullable => 1 },
   "tag_id",
@@ -125,8 +132,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 12:14:54
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:n+KgvOxy7GKOw5/qxSasrw
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 13:11:53
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:WwkCv4K4bBLuJR2LlRGu9A
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

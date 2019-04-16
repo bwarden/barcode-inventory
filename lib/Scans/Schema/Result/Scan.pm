@@ -26,7 +26,9 @@ __PACKAGE__->table("scans");
 =head2 id
 
   data_type: 'bigint'
+  is_auto_increment: 1
   is_nullable: 0
+  sequence: 'scans_id_seq'
 
 =head2 code
 
@@ -55,7 +57,12 @@ __PACKAGE__->table("scans");
 
 __PACKAGE__->add_columns(
   "id",
-  { data_type => "bigint", is_nullable => 0 },
+  {
+    data_type         => "bigint",
+    is_auto_increment => 1,
+    is_nullable       => 0,
+    sequence          => "scans_id_seq",
+  },
   "code",
   { data_type => "text", is_nullable => 1 },
   "source",
@@ -84,8 +91,8 @@ __PACKAGE__->add_columns(
 __PACKAGE__->set_primary_key("id");
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 12:15:26
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:yzN4UagR7wQXkIDJr2Xsuw
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 13:11:34
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:ZV2zAwTqjxCLwRCPwLDeSw
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

@@ -26,7 +26,9 @@ __PACKAGE__->table("tags");
 =head2 id
 
   data_type: 'bigint'
+  is_auto_increment: 1
   is_nullable: 0
+  sequence: 'tags_id_seq'
 
 =head2 tag
 
@@ -37,7 +39,12 @@ __PACKAGE__->table("tags");
 
 __PACKAGE__->add_columns(
   "id",
-  { data_type => "bigint", is_nullable => 0 },
+  {
+    data_type         => "bigint",
+    is_auto_increment => 1,
+    is_nullable       => 0,
+    sequence          => "tags_id_seq",
+  },
   "tag",
   { data_type => "text", is_nullable => 1 },
 );
@@ -86,8 +93,8 @@ __PACKAGE__->has_many(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 12:14:54
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:fHjErVvqAgS172gJDApiiQ
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 13:11:53
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:V4XSKr/Mh+mDSgCCPNSK/g
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

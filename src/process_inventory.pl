@@ -60,7 +60,7 @@ while(my $scans =
 
   if (! $scans->count) {
     # Wait for update
-    warn "Waiting for update";
+    print STDERR ".";
     sleep 5;
   }
   else
@@ -95,6 +95,12 @@ while(my $scans =
         # Iff we're in a valid location/operation, process barcodes
         if ($location && $operation) {
           if (my $code = get_validated_gtin($scan->code)) {
+
+            # Check for a UPC pattern
+            my $pattern = $schema->resultset('Pattern')->find(
+              {
+
+              });
 
             # Store GTIN
             my $gtin = $schema->resultset('Gtin')->find_or_create(

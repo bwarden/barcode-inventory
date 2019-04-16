@@ -40,8 +40,8 @@ my $c = Config::YAML->new(
   output => ${CONFIG_FILE},
 );
 
-my $db = "$Bin/../data/inventory.db";
-my $dbd = $c->get_dbd || "dbi:SQLite:${db}";
+my $db = "inventory";
+my $dbd = $c->get_dbd || "dbi:Pg:dbname=${db}";
 $c->set_dbd($dbd);
 
 my $dvddb_dir = $c->get_dvddb_dir || "$Bin/../data/dvd_csv";

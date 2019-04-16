@@ -28,16 +28,37 @@ use lib "$Bin/../lib";
 use Business::Barcode::EAN13 qw(valid_barcode);
 use Business::ISBN;
 use Business::UPC;
+use Config::YAML;
 use DateTime;
 
 use Inventory::Schema;
+use Scans::Schema;
 
 my $TIMEOUT = 300; # Inventory scanning is good for 5 minutes
-my $db = "$Bin/../data/inventory.db";
-my $dbd = "dbi:SQLite:${db}";
+
+my $CONFIG_FILE = "$Bin/../config";
+
+my $c = Config::YAML->new(
+  config => ${CONFIG_FILE},
+  output => ${CONFIG_FILE},
+);
+
+my $db = "inventory";
+my $dbd = $c->get_dbd || "dbi:Pg:dbname=${db}";
+$c->set_dbd($dbd);
+
+my $scans_db = "barcode_scans";
+my $scans_dbd = $c->get_scans_dbd || "dbi:Pg:dbname=${db}";
+$c->set_scans_dbd($scans_dbd);
 
 # Connect to database
 my $schema = Inventory::Schema->connect($dbd);
+my $scans_schema = Scans::Schema->connect($scans_dbd);
+
+# Commit config changes
+$c->write;
+
+# instantiate a datetime parser
 my $parser = $schema->storage->datetime_parser;
 
 my $inittime  = DateTime->from_epoch(epoch => 0);
@@ -49,7 +70,7 @@ my $operation;
 
 # Fetch entries within the given time
 while(my $scans =
-  $schema->resultset('Scan')->search(
+  $scans_schema->resultset('Scan')->search(
     {
       claimed => 0,
       id => {

@@ -25,18 +25,25 @@ use utf8;
 use Business::Barcode::EAN13 qw(valid_barcode);
 use Business::ISBN;
 use Business::UPC;
+use Config::YAML;
 use DBI;
 use FindBin qw($Bin);
 
-my $db = "$Bin/../data/inventory.db";
+my $CONFIG_FILE = "$Bin/../config";
+my $c = Config::YAML->new(
+  config => ${CONFIG_FILE},
+  output => ${CONFIG_FILE},
+);
 
-my $dbh = DBI->connect("dbi:SQLite:dbname=$db", '', '')
+my $db = "inventory";
+my $dbd = $c->get_dbd || "dbi:Pg:dbname=${db}";
+$c->set_dbd($dbd);
+
+my $dbh = DBI->connect($dbd)
   or die "Couldn't open DB $db\n";
 
-$dbh->sqlite_enable_load_extension(1)
-  or die "Couldn't enable extension loading";
-$dbh->sqlite_load_extension('/usr/lib/sqlite3/pcre.so')
-  or die "Couldn't load SQLite REGEXP engine";
+# Commit config changes
+$c->write;
 
 # $dbh->do('CREATE TABLE IF NOT EXISTS code_types(id INTEGER PRIMARY KEY, type TEXT, UNIQUE(type) ON CONFLICT IGNORE);');
 # $dbh->do('CREATE TABLE IF NOT EXISTS codes(id INTEGER PRIMARY KEY, code TEXT, code_type INTEGER, parent INTEGER, UNIQUE(code) ON CONFLICT IGNORE, FOREIGN KEY(code_type) REFERENCES code_types(id), FOREIGN KEY(parent) REFERENCES codes(id));');

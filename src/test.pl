@@ -24,22 +24,34 @@ use utf8;
 
 use Modern::Perl;
 
+use Config::YAML;
 use DBI;
 use FindBin qw($Bin);
 use IO::Select;
 use Linux::USBKeyboard;
 
-my $db = "$Bin/../data/inventory.db";
+my $CONFIG_FILE = "$Bin/../config";
+
+my $c = Config::YAML->new(
+  config => ${CONFIG_FILE},
+  output => ${CONFIG_FILE},
+);
+
+my $db = "barcode_scans";
+my $dbd = $c->get_scans_dbd || "dbi:Pg:dbname=${db}";
+$c->set_scans_dbd($dbd);
 
 my $vendor_id  = 0x0581;
 my $product_id = 0x0103;
  
 my @bpid = (0x0581, 0x0103); # barcode reader
 
-my $dbh = DBI->connect("dbi:SQLite:dbname=$db", '', '')
+my $dbh = DBI->connect("dbi:Pg:dbname=$db", '', '')
   or die "Couldn't open DB $db\n";
 
-$dbh->do('CREATE TABLE IF NOT EXISTS scans(id INTEGER PRIMARY KEY, code TEXT, source INTEGER, claimed BOOLEAN NOT NULL DEFAULT 0, date_added DATETIME DEFAULT CURRENT_TIMESTAMP);');
+# Commit config changes
+$c->write;
+
 my $sth = $dbh->prepare('INSERT INTO scans (code, source) VALUES(?, ?);')
   or die $dbh->errstr;
  

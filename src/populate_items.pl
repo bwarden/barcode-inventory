@@ -31,6 +31,7 @@ use Config::YAML;
 use Inventory::Schema;
 use JSON qw(decode_json);
 use LWP::Simple qw(get);
+use DBI;
 
 my $CONFIG_FILE = "$Bin/../config";
 
@@ -43,6 +44,24 @@ my $db = "$Bin/../data/inventory.db";
 my $dbd = $c->get_dbd || "dbi:SQLite:${db}";
 $c->set_dbd($dbd);
 
+my $bfpd_dir = $c->get_bfpd_dir || "$Bin/../data/BFPD";
+my $bfpd_dbh;
+my $bfpd_sth;
+if ($bfpd_dir && -d $bfpd_dir) {
+  $c->set_bfpd_dir($bfpd_dir);
+  $bfpd_dbh = DBI->connect("dbi:CSV:", undef, undef, {
+      f_schema => undef,
+      f_ext => '.csv/r',
+      f_dir => $bfpd_dir,
+    }
+  ) or die DBI::errstr;
+  $bfpd_sth = $bfpd_dbh->prepare('SELECT * FROM Products WHERE gtin_upc=? LIMIT 1;')
+    or die $bfpd_dbh->errstr;
+}
+
+# Commit config changes
+$c->write;
+
 my $api_key = $c->get_upsdatabase_org_api_key
   or die "Must configure database key in ${CONFIG_FILE}\n";
 my $base_url = 'https://api.upcdatabase.org';
@@ -51,9 +70,6 @@ my %lookups;
 
 # Connect to database
 my $schema = Inventory::Schema->connect($dbd);
-
-# Commit config changes
-$c->write;
 
 my $empty_items = $schema->resultset('Item')->search(
   {
@@ -71,22 +87,42 @@ foreach my $item ($empty_items->all) {
 
     GTIN:
     foreach my $gtin ($gtins->all) {
-      if (!$lookups{$gtin}) {
-        my $url = join('/', $base_url, 'product', sprintf("%013d", $gtin->gtin), $api_key);
+      my $gtin_str = sprintf("%013d", $gtin->gtin);
+
+      my $desc = $lookups{$gtin_str}
+        and next GTIN; # already done
+
+      print "Looking up $gtin_str\n";
+
+      if (!$desc && $bfpd_sth) {
+        # Try local copy of BFPD
+        $bfpd_sth->execute($gtin_str)
+          or die $bfpd_sth->errstr;
+
+        while (my $row = $bfpd_sth->fetchrow_hashref) {
+          $desc = $row->{'long_name'};
+          print "Found $gtin_str in BFPD: $desc\n";
+        }
+      }
+
+      if (!$desc) {
+        # Try upcdatabase.org
+        my $url = join('/', $base_url, 'product', $gtin_str, $api_key);
         my $response = get($url)
           or next GTIN;
         my $data = decode_json($response);
-        $lookups{$gtin} = $data;
+        $desc = $data->{'description'};
+        print "Found $gtin_str in upcdatabase.org: $desc\n";
+      }
 
-        if ($data) {
-          # Store the new data
-          print "Updating item ", $item->id, " to ", $data->{description}, "\n";
-          $item->update(
-            {
-              desc => $data->{description},
-            }
-          );
-        }
+      if ($desc) {
+        # Store the new data
+        print "Updating item ", $item->id, " to ", $desc, "\n";
+        $item->update(
+          {
+            desc => $desc,
+          }
+        );
       }
     }
   }

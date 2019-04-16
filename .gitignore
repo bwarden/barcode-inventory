@@ -2,3 +2,4 @@ barcode
 *.db
 codes.txt
 config
+data/

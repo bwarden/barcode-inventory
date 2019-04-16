@@ -30,16 +30,21 @@ __PACKAGE__->table("patterns");
   is_nullable: 0
   sequence: 'patterns_id_seq'
 
-=head2 pattern
-
-  data_type: 'text'
-  is_nullable: 1
-
 =head2 item_id
 
   data_type: 'bigint'
   is_foreign_key: 1
   is_nullable: 1
+
+=head2 lower
+
+  data_type: 'bigint'
+  is_nullable: 0
+
+=head2 upper
+
+  data_type: 'bigint'
+  is_nullable: 0
 
 =cut
 
@@ -51,10 +56,12 @@ __PACKAGE__->add_columns(
     is_nullable       => 0,
     sequence          => "patterns_id_seq",
   },
-  "pattern",
-  { data_type => "text", is_nullable => 1 },
   "item_id",
   { data_type => "bigint", is_foreign_key => 1, is_nullable => 1 },
+  "lower",
+  { data_type => "bigint", is_nullable => 0 },
+  "upper",
+  { data_type => "bigint", is_nullable => 0 },
 );
 
 =head1 PRIMARY KEY
@@ -71,17 +78,19 @@ __PACKAGE__->set_primary_key("id");
 
 =head1 UNIQUE CONSTRAINTS
 
-=head2 C<idx_43385_sqlite_autoindex_patterns_1>
+=head2 C<patterns_lower_upper_key>
 
 =over 4
 
-=item * L</pattern>
+=item * L</lower>
+
+=item * L</upper>
 
 =back
 
 =cut
 
-__PACKAGE__->add_unique_constraint("idx_43385_sqlite_autoindex_patterns_1", ["pattern"]);
+__PACKAGE__->add_unique_constraint("patterns_lower_upper_key", ["lower", "upper"]);
 
 =head1 RELATIONS
 
@@ -106,8 +115,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 13:11:53
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:vjtqwBpgFLZSKG+xuatTjg
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 13:49:18
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:MaxkSl5OiiN0xyLTQHZ1uQ
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

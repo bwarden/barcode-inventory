@@ -113,46 +113,73 @@ while(my $scans =
         }
       }
       else {
+
+        my $item;
+        my $item_id;
         # Iff we're in a valid location/operation, process barcodes
         if ($location && $operation) {
           if (my $code = get_validated_gtin($scan->code)) {
 
             # Check for a UPC pattern
-            my $pattern = $schema->resultset('Pattern')->find(
+            my $pattern = $schema->resultset('Pattern')->search(
               {
-
-              });
-
-            # Store GTIN
-            my $gtin = $schema->resultset('Gtin')->find_or_create(
-              {
-                gtin => $code,
-              });
-
-            # Add/link item
-            my $item;
-            if (! $gtin->item_id) {
-              warn "Creating item for $code";
-              $item = $schema->resultset('Item')->find_or_create(
-                {
-                  short_desc => $code,
+                upper => {
+                  '>=' => $code,
                 },
-                {
+                lower => {
+                  '<=' => $code,
+                },
+              },
+              {
+                  order_by => { -asc => 'upper - lower' },
                   rows => 1,
-                });
-              $gtin->update(
-                {
-                  item_id => $item->id,
-                });
+              },
+            );
+            if ($pattern && $pattern->count) {
+              foreach my $match ($pattern->all) {
+                unless ($item = $match->item) {
+                  warn "Discarding by pattern: $code\n";
+                  $lastrowid = $scan->id;
+                  next SCAN; # Pattern indicates to discard this one
+                }
+                $item_id = $item->id;
+              }
             }
-            else {
-              $item = $schema->resultset('Item')->find(
+
+            if (! $item_id) {
+              # Store GTIN
+              my $gtin = $schema->resultset('Gtin')->find_or_create(
                 {
-                  id => $gtin->item_id,
-                },
-                {
-                  rows => 1,
+                  gtin => $code,
                 });
+
+              # Add/link item
+              my $item;
+              if (! $gtin->item_id) {
+                warn "Creating item for $code";
+                $item = $schema->resultset('Item')->find_or_create(
+                  {
+                    short_desc => $code,
+                  },
+                  {
+                    rows => 1,
+                  });
+                $item_id = $item->id;
+                $gtin->update(
+                  {
+                    item_id => $item_id,
+                  });
+              }
+              else {
+                $item_id = $gtin->item_id;
+                $item = $schema->resultset('Item')->find(
+                  {
+                    id => $item_id,
+                  },
+                  {
+                    rows => 1,
+                  });
+              }
             }
 
             # Add/remove item to/from location
@@ -165,7 +192,7 @@ while(my $scans =
               if ($operation eq 'add') {
                 my $inventory = $schema->resultset('Inventory')->create(
                   {
-                    item_id => $gtin->item_id,
+                    item_id => $item_id,
                     location_id => $loc->id,
                   });
                 print "Added to       ", $loc->full_name, ": ",
@@ -175,7 +202,7 @@ while(my $scans =
               if ($operation eq 'delete' || $operation eq 'remove') {
                 if (my $inventory = $schema->resultset('Inventory')->find(
                     {
-                      item_id => $gtin->item_id,
+                      item_id => $item_id,
                       location_id => $loc->id,
                     },
                     {
@@ -187,7 +214,7 @@ while(my $scans =
                   $item->short_desc, "\n";
                 }
                 else {
-                  warn "No more ".$gtin->item->short_desc." in ".$loc->full_name;
+                  warn "No more ".$item->short_desc." in ".$loc->full_name;
                 }
               }
             }

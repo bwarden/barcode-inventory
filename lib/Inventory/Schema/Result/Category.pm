@@ -35,7 +35,7 @@ __PACKAGE__->table("categories");
   data_type: 'text'
   is_nullable: 0
 
-=head2 desc
+=head2 description
 
   data_type: 'text'
   is_nullable: 1
@@ -58,7 +58,7 @@ __PACKAGE__->add_columns(
   },
   "name",
   { data_type => "text", is_nullable => 0 },
-  "desc",
+  "description",
   { data_type => "text", is_nullable => 1 },
   "parent_id",
   { data_type => "bigint", is_foreign_key => 1, is_nullable => 1 },
@@ -143,8 +143,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 13:18:36
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:eVTblzL3sACrS+3mOcuQow
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-17 08:55:05
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:mulO2hE6JKruu2b5u+fCOg
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

@@ -154,12 +154,11 @@ while(my $scans =
                 });
 
               # Add/link item
-              my $item;
               if (! $gtin->item_id) {
                 warn "Creating item for $code";
                 $item = $schema->resultset('Item')->find_or_create(
                   {
-                    short_desc => $code,
+                    short_description => $code,
                   },
                   {
                     rows => 1,

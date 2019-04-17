@@ -73,7 +73,7 @@ my $schema = Inventory::Schema->connect($dbd);
 
 my $empty_items = $schema->resultset('Item')->search(
   {
-    desc => undef,
+    description => undef,
   }
 );
 
@@ -120,7 +120,7 @@ foreach my $item ($empty_items->all) {
         print "Updating item ", $item->id, " to ", $desc, "\n";
         $item->update(
           {
-            desc => $desc,
+            description => $desc,
           }
         );
       }

@@ -28,14 +28,14 @@ __PACKAGE__->table("items");
   data_type: 'bigint'
   is_auto_increment: 1
   is_nullable: 0
-  sequence: 'item_tags_id_seq'
+  sequence: 'items_id_seq'
 
-=head2 short_desc
+=head2 short_description
 
   data_type: 'text'
   is_nullable: 1
 
-=head2 desc
+=head2 description
 
   data_type: 'text'
   is_nullable: 1
@@ -60,11 +60,11 @@ __PACKAGE__->add_columns(
     data_type         => "bigint",
     is_auto_increment => 1,
     is_nullable       => 0,
-    sequence          => "item_tags_id_seq",
+    sequence          => "items_id_seq",
   },
-  "short_desc",
+  "short_description",
   { data_type => "text", is_nullable => 1 },
-  "desc",
+  "description",
   { data_type => "text", is_nullable => 1 },
   "parent_id",
   { data_type => "bigint", is_foreign_key => 1, is_nullable => 1 },
@@ -202,8 +202,8 @@ __PACKAGE__->has_many(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 13:18:36
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:ZtXMdqQyNUAAKJVyN/8p/w
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-17 08:55:05
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:EqfOJoBa1fhmEGO7jorH2Q
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

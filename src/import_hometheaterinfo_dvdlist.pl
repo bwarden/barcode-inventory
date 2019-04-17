@@ -44,30 +44,27 @@ my $db = "inventory";
 my $dbd = $c->get_dbd || "dbi:Pg:dbname=${db}";
 $c->set_dbd($dbd);
 
-my $dvddb_dir = $c->get_dvddb_dir || "$Bin/../data/dvd_csv";
-if ($dvddb_dir && -d $dvddb_dir) {
-  $c->set_dvddb_dir($dvddb_dir);
-}
-
-my $dvd_dbh = DBI->connect("dbi:CSV:", undef, undef, {
-    f_schema => undef,
-    f_ext => '.txt/r',
-    f_dir => $dvddb_dir,
-  }
-) or die DBI::errstr;
-my $dvd_sth = $dvd_dbh->prepare('SELECT * FROM dvd_csv WHERE upc LIKE ?;')
-  or die $dvd_dbh->errstr;
+# Connect to database
+my $schema = Inventory::Schema->connect($dbd);
 
 # Commit config changes
 $c->write;
 
-# Connect to database
-my $schema = Inventory::Schema->connect($dbd);
-
 my $empty_items = $schema->resultset('Item')->search(
   {
-    desc => undef,
+    description => undef,
+  },
+  {
+      order_by => {
+        -desc => 'id',
+      },
   }
+);
+
+my $category = $schema->resultset('Category')->single(
+  {
+    name => 'movies',
+  },
 );
 
 my %lookups;
@@ -82,20 +79,25 @@ foreach my $item ($empty_items->all) {
 
     GTIN:
     foreach my $gtin ($gtins->all) {
-      my $gtin_str = sprintf("%013d", $gtin->gtin);
+      my $gtin_str = $gtin->gtin;
 
       my $desc = $lookups{$gtin_str}
         and next GTIN; # already done
 
       print "Looking up $gtin_str\n";
 
-      if (!$desc && $dvd_sth) {
-        # Try local copy of BFPD
-        $dvd_sth->execute("\%$gtin_str")
-          or die $dvd_sth->errstr;
+      if (!$desc) {
+        # Check DVD CSV database
+        my $dvds = $schema->resultset('DvdCsv')->search(
+          {
+            upc => {
+              -like => "\%$gtin_str",
+            },
+          }
+        );
 
-        while (my $row = $dvd_sth->fetchrow_hashref) {
-          $desc = $row->{'dvd_title'};
+        foreach my $dvd ($dvds->all) {
+          $desc = $dvd->dvd_title;
           print "Found $gtin_str in DVD database: $desc\n";
         }
       }
@@ -103,11 +105,13 @@ foreach my $item ($empty_items->all) {
       if ($desc) {
         # Store the new data
         print "Updating item ", $item->id, " to ", $desc, "\n";
-        my ($short_desc) = ($desc =~ m/(.*)\(/);
+        my ($short_desc) = ($desc =~ m/^([^\.,\(:]+)/);
+
+        $item->category($category);
         $item->update(
           {
-            desc => $desc,
-            short_desc => $short_desc,
+            description => $desc,
+            short_description => $short_desc,
           }
         );
       }

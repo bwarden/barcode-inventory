@@ -195,7 +195,7 @@ while(my $scans =
                     location_id => $loc->id,
                   });
                 print "Added to       ", $loc->full_name, ": ",
-                $item->short_desc, "\n";
+                $item->short_description, "\n";
               }
 
               if ($operation eq 'delete' || $operation eq 'remove') {
@@ -210,10 +210,10 @@ while(my $scans =
                   )) {
                   $inventory->delete;
                   print "Removed from ", $loc->full_name, ": ",
-                  $item->short_desc, "\n";
+                  $item->short_description, "\n";
                 }
                 else {
-                  warn "No more ".$item->short_desc." in ".$loc->full_name;
+                  warn "No more ".$item->short_description." in ".$loc->full_name;
                 }
               }
             }

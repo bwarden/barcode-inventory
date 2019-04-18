@@ -74,6 +74,11 @@ my $schema = Inventory::Schema->connect($dbd);
 my $empty_items = $schema->resultset('Item')->search(
   {
     description => undef,
+  },
+  {
+    order_by => {
+      -desc => 'id',
+    },
   }
 );
 

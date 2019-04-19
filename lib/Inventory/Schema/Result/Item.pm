@@ -201,9 +201,24 @@ __PACKAGE__->has_many(
   { cascade_copy => 0, cascade_delete => 0 },
 );
 
+=head2 schwans_products
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-17 08:55:05
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:EqfOJoBa1fhmEGO7jorH2Q
+Type: has_many
+
+Related object: L<Inventory::Schema::Result::SchwansProduct>
+
+=cut
+
+__PACKAGE__->has_many(
+  "schwans_products",
+  "Inventory::Schema::Result::SchwansProduct",
+  { "foreign.item_id" => "self.id" },
+  { cascade_copy => 0, cascade_delete => 0 },
+);
+
+
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-18 22:20:03
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:rBSWP7co5PGdm18DWE+3zw
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

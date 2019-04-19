@@ -177,53 +177,83 @@ while(my $scans =
                   },
                   {
                     rows => 1,
-                  });
+                  },
+                );
               }
             }
-
-            # Add/remove item to/from location
-            if (my $loc = $schema->resultset('Location')->find(
+          }
+          elsif ($code = get_schwans_code($scan->code)) {
+            my $product = $schema->resultset('SchwansProduct')->find_or_create(
+              {
+                id => $code,
+              },
+            ) or next SCAN;
+            if (! $product->item_id) {
+              warn "Creating Schwans item $code";
+              $item = $schema->resultset('Item')->create(
                 {
-                  short_name => $location,
+                  short_description => "Schwan's $code",
+                },
+              );
+              $item_id = $item->id;
+              $product->update(
+                {
+                  item_id => $item_id,
+                },
+              );
+            }
+            else {
+              $item = $schema->resultset('Item')->find(
+                {
+                  id => $product->item_id,
                 }
-              )) {
+              );
+              $item_id = $item->id;
+            }
+          }
 
-              if ($operation eq 'add') {
-                my $inventory = $schema->resultset('Inventory')->create(
+          # Add/remove item to/from location
+          if (my $loc = $schema->resultset('Location')->find(
+              {
+                short_name => $location,
+              }
+            )) {
+
+            if ($operation eq 'add') {
+              my $inventory = $schema->resultset('Inventory')->create(
+                {
+                  item_id => $item_id,
+                  location_id => $loc->id,
+                });
+              print "Added to       ", $loc->full_name, ": ",
+              $item->short_description, "\n";
+            }
+
+            if ($operation eq 'delete' || $operation eq 'remove') {
+              if (my $inventory = $schema->resultset('Inventory')->find(
                   {
                     item_id => $item_id,
                     location_id => $loc->id,
-                  });
-                print "Added to       ", $loc->full_name, ": ",
+                  },
+                  {
+                    rows => 1,
+                  },
+                )) {
+                $inventory->delete;
+                print "Removed from ", $loc->full_name, ": ",
                 $item->short_description, "\n";
               }
-
-              if ($operation eq 'delete' || $operation eq 'remove') {
-                if (my $inventory = $schema->resultset('Inventory')->find(
-                    {
-                      item_id => $item_id,
-                      location_id => $loc->id,
-                    },
-                    {
-                      rows => 1,
-                    },
-                  )) {
-                  $inventory->delete;
-                  print "Removed from ", $loc->full_name, ": ",
-                  $item->short_description, "\n";
-                }
-                else {
-                  warn "No more ".$item->short_description." in ".$loc->full_name;
-                }
+              else {
+                warn "No more ".$item->short_description." in ".$loc->full_name;
               }
             }
-
-            # Mark scan as claimed
-            $scan->update(
-              {
-                claimed => 1,
-              });
           }
+
+          # Mark scan as claimed
+          $scan->update(
+            {
+              claimed => 1,
+            });
         }
       }
 
@@ -241,6 +271,17 @@ while(my $scans =
 
 exit;
 
+sub get_schwans_code {
+  my ($code) = shift || return;
+
+  if ($code =~ m/^\d{6}$/) {
+    $code += 0;
+    if ($code >= 100000) {
+      $code = int($code / 10);
+    }
+    return $code;
+  }
+}
 
 sub get_validated_gtin {
   my ($code) = shift || return;

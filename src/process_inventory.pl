@@ -241,7 +241,7 @@ while(my $scans =
                 )) {
                 $inventory->delete;
                 print "Removed from ", $loc->full_name, ": ",
-                $item->short_description, "\n";
+                ($item->short_description || '(unknown)'), "\n";
               }
               else {
                 warn "No more ".$item->short_description." in ".$loc->full_name;

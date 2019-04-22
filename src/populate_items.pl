@@ -99,6 +99,17 @@ foreach my $item ($empty_items->all) {
 
       print "Looking up $gtin_str\n";
 
+      # Schwan's (72180)
+      # <div class="product-bd-main-callout">
+      #     <div class="product-bd-main-callout-title">
+      #         <h1 itemprop="name">Signature™ Angus Beef, Cheese and Bacon Burgers</h1>
+      #     </div>
+      #     <div class="product-bd-main-callout-detail" itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+      #         <span class="product-bd-main-callout-detail-sku" itemprop="sku">#498</span> | 
+      #         <span class="product-bd-main-callout-detail-weight">8 (5.3 oz.)</span>
+      #     </div>
+      # </div>
+
       if (!$desc && $bfpd_sth) {
         # Try local copy of BFPD
         $bfpd_sth->execute($gtin_str)
@@ -116,7 +127,7 @@ foreach my $item ($empty_items->all) {
         my $response = get($url)
           or next GTIN;
         my $data = decode_json($response);
-        $desc = $data->{'description'};
+        $desc = $data->{'description'} || $data->{'title'};
         print "Found $gtin_str in upcdatabase.org: $desc\n";
       }
 

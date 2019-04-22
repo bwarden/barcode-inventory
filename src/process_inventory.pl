@@ -226,7 +226,7 @@ while(my $scans =
                   location_id => $loc->id,
                 });
               print "Added to       ", $loc->full_name, ": ",
-              $item->short_description, "\n";
+              ($item && $item->short_description || '(unknown)'), "\n";
             }
 
             if ($operation eq 'delete' || $operation eq 'remove') {

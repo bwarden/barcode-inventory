@@ -2,3 +2,5 @@ USDA Food Composition Databases	https://ndb.nal.usda.gov/ndb/search/list?new=1
 BPFD ASCII Files	https://www.ars.usda.gov/ARSUserFiles/80400525/Data/BFPDB/BFPD_csv_07132018.zip
 DVD database	http://www.hometheaterinfo.com/dvdlist.htm
 	\copy dvd_csv(dvd_title, studio, released, status, sound, versions, price, rating, year, genre, aspect, upc, dvd_releasedate, id, timestamp) FROM '/tmp/dvd_csv.txt' WITH ENCODING 'iso-8859-13' DELIMITER ',' CSV HEADER;
+WIC	https://www.oregon.gov/oha/PH/HEALTHYPEOPLEFAMILIES/WIC/Pages/vendor_materials.aspx
+WIC	https://www.oregon.gov/OHA/PH/HealthyPeopleFamilies/wic/Pages/vendor.aspx

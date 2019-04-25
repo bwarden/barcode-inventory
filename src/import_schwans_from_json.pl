@@ -1,0 +1,112 @@
+#!/usr/bin/env perl 
+#===============================================================================
+#
+#         FILE: import_schwans_from_json.pl
+#
+#        USAGE: ./import_schwans_from_json.pl  
+#
+#  DESCRIPTION: 
+#
+#      OPTIONS: ---
+# REQUIREMENTS: ---
+#         BUGS: ---
+#        NOTES: ---
+#       AUTHOR: Brett T. Warden (btw), bwarden@wgz.com
+# ORGANIZATION: 
+#      VERSION: 1.0
+#      CREATED: 04/24/2019 03:46:11 PM
+#     REVISION: ---
+#===============================================================================
+
+use strict;
+use warnings;
+use utf8;
+
+binmode STDOUT, ':utf8';
+
+use FindBin qw($Bin);
+use lib "$Bin/../lib";
+
+use Modern::Perl;
+
+use Config::YAML;
+use Data::Dumper;
+use Inventory::Schema;
+use JSON;
+use LWP::Simple qw(get);
+use DBI;
+
+my $CONFIG_FILE = "$Bin/../config";
+
+my $c = Config::YAML->new(
+  config => ${CONFIG_FILE},
+  output => ${CONFIG_FILE},
+);
+
+my $db = "inventory";
+my $dbd = $c->get_dbd || "dbi:Pg:dbname=${db}";
+$c->set_dbd($dbd);
+
+# Connect to database
+my $schema = Inventory::Schema->connect($dbd);
+
+# Commit config changes
+$c->write;
+
+ITEM:
+while (my $json = decode_json(<>)) {
+  if ($json->{webshopIdentifier} && $json->{title} && $json->{brand}) {
+    my $code = $json->{webshopIdentifier};
+    my $order_num = $json->{mpn} || '';
+    my $brand = ((split(' ', $json->{brand})))[0];
+    my $short_desc = $json->{title};
+    my @description;
+    push(@description, $brand, $json->{title});
+    if ($order_num) {
+      push(@description, "#$order_num");
+    }
+    if ($code) {
+      push(@description, "id:$code");
+    }
+    my $description = join(' ', @description);
+
+    print "$code|$short_desc|$description\n";
+
+    my $item;
+    my $item_id;
+
+    if ($code =~ /^\d{5}$/) {
+      my $product = $schema->resultset('SchwansProduct')->find_or_create(
+        {
+          id => $code,
+        },
+      ) or next ITEM;
+      if (! $product->item_id) {
+        warn "Creating Schwans item $description";
+        $item = $schema->resultset('Item')->create(
+          {
+            short_description => $short_desc,
+            description => $description,
+          },
+        );
+        $item_id = $item->id;
+        $product->update(
+          {
+            item_id => $item_id,
+          },
+        );
+      }
+      else {
+        $item = $schema->resultset('Item')->find(
+          {
+            id => $product->item_id,
+          }
+        );
+        $item_id = $item->id;
+      }
+    } 
+  }
+}
+
+exit;
+

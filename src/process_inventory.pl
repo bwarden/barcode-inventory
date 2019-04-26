@@ -116,6 +116,8 @@ while(my $scans =
 
         my $item;
         my $item_id;
+        my $count = 1;
+
         # Iff we're in a valid location/operation, process barcodes
         if ($location && $operation) {
           if (my $code = get_validated_gtin($scan->code)) {
@@ -152,6 +154,9 @@ while(my $scans =
                 {
                   gtin => $code,
                 });
+
+              # Handle multi-packs
+              $count = $gtin->item_quantity;
 
               # Add/link item
               if (! $gtin->item_id) {
@@ -219,32 +224,34 @@ while(my $scans =
               }
             )) {
 
-            if ($operation eq 'add') {
-              my $inventory = $schema->resultset('Inventory')->create(
-                {
-                  item_id => $item_id,
-                  location_id => $loc->id,
-                });
-              print "Added to       ", $loc->full_name, ": ",
-              ($item && $item->short_description || '(unknown)'), "\n";
-            }
-
-            if ($operation eq 'delete' || $operation eq 'remove') {
-              if (my $inventory = $schema->resultset('Inventory')->find(
+            while ($count--) {
+              if ($operation eq 'add') {
+                my $inventory = $schema->resultset('Inventory')->create(
                   {
                     item_id => $item_id,
                     location_id => $loc->id,
-                  },
-                  {
-                    rows => 1,
-                  },
-                )) {
-                $inventory->delete;
-                print "Removed from ", $loc->full_name, ": ",
-                ($item->short_description || '(unknown)'), "\n";
+                  });
+                print "Added to       ", $loc->full_name, ": ",
+                ($item && $item->short_description || '(unknown)'), "\n";
               }
-              else {
-                warn "No more ".$item->short_description." in ".$loc->full_name;
+
+              if ($operation eq 'delete' || $operation eq 'remove') {
+                if (my $inventory = $schema->resultset('Inventory')->find(
+                    {
+                      item_id => $item_id,
+                      location_id => $loc->id,
+                    },
+                    {
+                      rows => 1,
+                    },
+                  )) {
+                  $inventory->delete;
+                  print "Removed from ", $loc->full_name, ": ",
+                  ($item->short_description || '(unknown)'), "\n";
+                }
+                else {
+                  warn "No more ".$item->short_description." in ".$loc->full_name;
+                }
               }
             }
           }

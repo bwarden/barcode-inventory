@@ -69,7 +69,8 @@ while(my @ready = $sel->can_read) {
     if(1 && $fh == $bp) { # treat linewise
       chomp($v = <$fh>);
       print $fh->pid, ' says: ', $v, "\n";
-      $sth->execute($v, $fh->pid);
+      $sth->execute($v, $fh->pid)
+        or die $sth->errstr;
     }
     else { # charwise
       $v = getc($fh);
@@ -82,7 +83,8 @@ while(my @ready = $sel->can_read) {
           local $| = 1;
           my $code = join('', @{$buffer{$fh->pid}});
           print $fh->pid, ' says: ', $code, "\n";
-          $sth->execute($code, $fh->pid);
+          $sth->execute($code, $fh->pid)
+            or die $sth->errstr;
         }
         @{$buffer{$fh->pid}} = ();
       }

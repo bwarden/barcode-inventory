@@ -55,10 +55,10 @@ $c->write;
 
 ITEM:
 while (my $json = decode_json(<>)) {
-  if ($json->{webshopIdentifier} && $json->{title} && $json->{brand}) {
+  if ($json->{webshopIdentifier} && $json->{title}) {
     my $code = $json->{webshopIdentifier};
     my $order_num = $json->{mpn} || '';
-    my $brand = ((split(' ', $json->{brand})))[0];
+    my $brand = ((split(' ', ($json->{brand}||'Schwans'))))[0];
     my $short_desc = $json->{title};
     my @description;
     push(@description, $brand, $json->{title});
@@ -103,6 +103,13 @@ while (my $json = decode_json(<>)) {
           }
         );
         $item_id = $item->id;
+        print "Updating $item_id $description\n";
+        $item->update(
+          {
+            short_description => $short_desc,
+            description => $description,
+          },
+        );
       }
     } 
   }

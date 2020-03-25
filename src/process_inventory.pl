@@ -89,7 +89,7 @@ while(my $scans =
     SCAN:
     foreach my $scan ($scans->all) {
       if ($location && DateTime->compare($parser->parse_datetime($scan->date_added), $endtime) > 0) {
-        warn "Expired inventory operation at ".$scan->date_added;
+        warn "Expired inventory operation at ".$scan->date_added."\n";
         $location = '';
         $operation = '';
       }
@@ -106,10 +106,10 @@ while(my $scans =
           });
 
         if ($location && $operation) {
-          warn "Starting $location $operation at ".$scan->date_added;
+          warn "Starting $location $operation at ".$scan->date_added."\n";
         }
         else {
-          warn "Ended inventory operation at ".$scan->date_added;
+          warn "Ended inventory operation at ".$scan->date_added."\n";
         }
       }
       else {
@@ -160,7 +160,7 @@ while(my $scans =
 
               # Add/link item
               if (! $gtin->item_id) {
-                warn "Creating item for $code";
+                warn "Creating item for $code\n";
                 $item = $schema->resultset('Item')->find_or_create(
                   {
                     short_description => $code,
@@ -194,7 +194,7 @@ while(my $scans =
               },
             ) or next SCAN;
             if (! $product->item_id) {
-              warn "Creating Schwans item $code";
+              warn "Creating Schwans item $code\n";
               $item = $schema->resultset('Item')->create(
                 {
                   short_description => "Schwan's $code",
@@ -247,10 +247,10 @@ while(my $scans =
                   )) {
                   $inventory->delete;
                   print "Removed from ", $loc->full_name, ": ",
-                  ($item->short_description || '(unknown)'), "\n";
+                  ($item && $item->short_description || '(unknown)'), "\n";
                 }
                 else {
-                  warn "No more ".$item->short_description." in ".$loc->full_name;
+                  warn "No more ".($item->short_description||'[unknown]')." in ".$loc->full_name."\n";
                 }
               }
             }

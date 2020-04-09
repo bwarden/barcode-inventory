@@ -64,7 +64,7 @@ $c->write;
 
 my $api_key = $c->get_upsdatabase_org_api_key
   or die "Must configure database key in ${CONFIG_FILE}\n";
-my $base_url = 'https://api.upcdatabase.org';
+my $upcdb_base_url = 'https://api.upcdatabase.org';
 
 my %lookups;
 
@@ -99,17 +99,6 @@ foreach my $item ($empty_items->all) {
 
       print "Looking up $gtin_str\n";
 
-      # Schwan's (72180)
-      # <div class="product-bd-main-callout">
-      #     <div class="product-bd-main-callout-title">
-      #         <h1 itemprop="name">Signature™ Angus Beef, Cheese and Bacon Burgers</h1>
-      #     </div>
-      #     <div class="product-bd-main-callout-detail" itemprop="offers" itemscope itemtype="https://schema.org/Offer">
-      #         <span class="product-bd-main-callout-detail-sku" itemprop="sku">#498</span> | 
-      #         <span class="product-bd-main-callout-detail-weight">8 (5.3 oz.)</span>
-      #     </div>
-      # </div>
-
       if (!$desc && $bfpd_sth) {
         # Try local copy of BFPD
         $bfpd_sth->execute($gtin_str)
@@ -123,12 +112,24 @@ foreach my $item ($empty_items->all) {
 
       if (!$desc) {
         # Try upcdatabase.org
-        my $url = join('/', $base_url, 'product', $gtin_str, $api_key);
+        my $url = join('/', $upcdb_base_url, 'product', $gtin_str, $api_key);
         my $response = get($url)
           or next GTIN;
         my $data = decode_json($response);
-        $desc = $data->{'description'} || $data->{'title'};
-        print "Found $gtin_str in upcdatabase.org: $desc\n";
+        $desc = $data->{'description'} || $data->{'title'}
+          and print "Found $gtin_str in upcdatabase.org: $desc\n";
+      }
+
+      if (!$desc) {
+        # Try upcitemdb.com
+        my $url = "https://api.upcitemdb.com/prod/trial/lookup?upc=$gtin_str";
+        my $response = get($url)
+          or next GTIN;
+        my $data = decode_json($response);
+        if ($data && $data->{'items'} && ref $data->{'items'} eq 'ARRAY') {
+          $desc = $data->{'items'}[0]{'title'}
+            and print "Found $gtin_str in upcitemdb.com: $desc\n";
+        }
       }
 
       if ($desc) {

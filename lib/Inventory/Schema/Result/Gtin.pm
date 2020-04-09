@@ -40,6 +40,13 @@ __PACKAGE__->table("gtins");
   default_value: 1
   is_nullable: 0
 
+=head2 id
+
+  data_type: 'bigint'
+  is_auto_increment: 1
+  is_nullable: 0
+  sequence: 'gtins_id_seq'
+
 =cut
 
 __PACKAGE__->add_columns(
@@ -49,19 +56,42 @@ __PACKAGE__->add_columns(
   { data_type => "bigint", is_foreign_key => 1, is_nullable => 1 },
   "item_quantity",
   { data_type => "integer", default_value => 1, is_nullable => 0 },
+  "id",
+  {
+    data_type         => "bigint",
+    is_auto_increment => 1,
+    is_nullable       => 0,
+    sequence          => "gtins_id_seq",
+  },
 );
 
 =head1 PRIMARY KEY
 
 =over 4
 
-=item * L</gtin>
+=item * L</id>
 
 =back
 
 =cut
 
-__PACKAGE__->set_primary_key("gtin");
+__PACKAGE__->set_primary_key("id");
+
+=head1 UNIQUE CONSTRAINTS
+
+=head2 C<gtins_gtin_item_id_key>
+
+=over 4
+
+=item * L</gtin>
+
+=item * L</item_id>
+
+=back
+
+=cut
+
+__PACKAGE__->add_unique_constraint("gtins_gtin_item_id_key", ["gtin", "item_id"]);
 
 =head1 RELATIONS
 
@@ -86,8 +116,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-25 16:39:55
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:co4EsqbNivTBpEXxmSqwEQ
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2020-03-25 14:30:18
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:TfRykQlVjdJ34jPI54gTQg
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

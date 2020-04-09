@@ -114,9 +114,7 @@ while(my $scans =
       }
       else {
 
-        my $item;
-        my $item_id;
-        my $count = 1;
+        my %items;
 
         # Iff we're in a valid location/operation, process barcodes
         if ($location && $operation) {
@@ -139,51 +137,65 @@ while(my $scans =
             );
             if ($pattern && $pattern->count) {
               foreach my $match ($pattern->all) {
+                my $item;
                 unless ($item = $match->item) {
                   warn "Discarding by pattern: $code\n";
                   $lastrowid = $scan->id;
                   next SCAN; # Pattern indicates to discard this one
                 }
-                $item_id = $item->id;
+                $items{$item->id}++; # Add one of this item
               }
             }
 
-            if (! $item_id) {
-              # Store GTIN
-              my $gtin = $schema->resultset('Gtin')->find_or_create(
+            if (! %items) {
+
+              # Look up by GTIN
+              my $gtins = $schema->resultset('Gtin')->search(
                 {
                   gtin => $code,
                 });
 
-              # Handle multi-packs
-              $count = $gtin->item_quantity;
+              if (! $gtins->count ) {
+                # We'll need to create it
+                $gtins = $schema->resultset('Gtin')->create(
+                  {
+                    gtin => $code,
+                  });
 
-              # Add/link item
-              if (! $gtin->item_id) {
-                warn "Creating item for $code\n";
-                $item = $schema->resultset('Item')->find_or_create(
+                # Now look it up again, so we get an iterable RS
+                $gtins = $schema->resultset('Gtin')->search(
                   {
-                    short_description => $code,
-                  },
-                  {
-                    rows => 1,
+                    gtin => $code,
                   });
-                $item_id = $item->id;
-                $gtin->update(
-                  {
-                    item_id => $item_id,
-                  });
+
               }
-              else {
-                $item_id = $gtin->item_id;
-                $item = $schema->resultset('Item')->find(
-                  {
-                    id => $item_id,
-                  },
-                  {
-                    rows => 1,
-                  },
-                );
+
+              # Process multiple items for this GTIN
+              while (my $gtin = $gtins->next) {
+
+                # Add/link item
+                if (! $gtin->item_id) {
+                  warn "Creating item for $code\n";
+                  my $item = $schema->resultset('Item')->find_or_create(
+                    {
+                      short_description => $code,
+                    },
+                    {
+                      rows => 1,
+                    });
+                  $gtin->update(
+                    {
+                      item_id => $item->id,
+                    });
+                  $items{$item->id} += 1;
+                }
+                else {
+                  my $item_id = $gtin->item_id;
+
+                  # Handle multi-packs
+                  my $count = $gtin->item_quantity || 1;
+                  $items{$item_id} += $count;
+                }
               }
             }
           }
@@ -195,25 +207,25 @@ while(my $scans =
             ) or next SCAN;
             if (! $product->item_id) {
               warn "Creating Schwans item $code\n";
-              $item = $schema->resultset('Item')->create(
+              my $item = $schema->resultset('Item')->update_or_new(
                 {
                   short_description => "Schwan's $code",
                 },
               );
-              $item_id = $item->id;
+              $items{$item->id}++;
               $product->update(
                 {
-                  item_id => $item_id,
+                  item_id => $item->id,
                 },
               );
             }
             else {
-              $item = $schema->resultset('Item')->find(
+              my $item = $schema->resultset('Item')->find(
                 {
                   id => $product->item_id,
                 }
               );
-              $item_id = $item->id;
+              $items{$product->item_id}++;
             }
           }
 
@@ -224,35 +236,52 @@ while(my $scans =
               }
             )) {
 
-            while ($count--) {
-              if ($operation eq 'add') {
-                my $inventory = $schema->resultset('Inventory')->create(
-                  {
-                    item_id => $item_id,
-                    location_id => $loc->id,
-                  });
-                print "Added to       ", $loc->full_name, ": ",
-                ($item && $item->short_description || '(unknown)'), "\n";
-              }
-
-              if ($operation eq 'delete' || $operation eq 'remove') {
-                if (my $inventory = $schema->resultset('Inventory')->find(
+            while (my ($item_id, $count) = each %items) {
+              warn "Pondering $count of $item_id";
+              my $item = $schema->resultset('Item')->find(
+                {
+                  id => $item_id,
+                });
+              my @message = (
+                "Scanned $count",
+                "of",
+                ($item && $item->short_description || 'unknown item'),
+                "to",
+                $loc->full_name
+              );
+              my $completed = 0;
+              while ($count--) {
+                if ($operation eq 'add') {
+                  my $inventory = $schema->resultset('Inventory')->create(
                     {
                       item_id => $item_id,
                       location_id => $loc->id,
-                    },
-                    {
-                      rows => 1,
-                    },
-                  )) {
-                  $inventory->delete;
-                  print "Removed from ", $loc->full_name, ": ",
-                  ($item && $item->short_description || '(unknown)'), "\n";
+                    });
+                  $completed++;
+                  $message[0] = "Added $completed";
                 }
-                else {
-                  warn "No more ".($item->short_description||'[unknown]')." in ".$loc->full_name."\n";
+
+                if ($operation eq 'delete' || $operation eq 'remove') {
+                  if (my $inventory = $schema->resultset('Inventory')->find(
+                      {
+                        item_id => $item_id,
+                        location_id => $loc->id,
+                      },
+                      {
+                        rows => 1,
+                      },
+                    )) {
+                    $inventory->delete;
+                    $completed++;
+                    $message[0] = "Removed $completed";
+                  }
+                  else {
+                    warn "No more ".($item->short_description||'[unknown]')." in ".$loc->full_name."\n";
+                    $message[0] = "Removed all $completed";
+                  }
                 }
               }
+              print join(" ", @message), "\n";
             }
           }
 

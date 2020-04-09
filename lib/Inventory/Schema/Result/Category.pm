@@ -32,12 +32,12 @@ __PACKAGE__->table("categories");
 
 =head2 name
 
-  data_type: 'text'
+  data_type: 'citext'
   is_nullable: 0
 
 =head2 description
 
-  data_type: 'text'
+  data_type: 'citext'
   is_nullable: 1
 
 =head2 parent_id
@@ -57,9 +57,9 @@ __PACKAGE__->add_columns(
     sequence          => "categories_id_seq",
   },
   "name",
-  { data_type => "text", is_nullable => 0 },
+  { data_type => "citext", is_nullable => 0 },
   "description",
-  { data_type => "text", is_nullable => 1 },
+  { data_type => "citext", is_nullable => 1 },
   "parent_id",
   { data_type => "bigint", is_foreign_key => 1, is_nullable => 1 },
 );
@@ -143,8 +143,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-17 08:55:05
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:mulO2hE6JKruu2b5u+fCOg
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2020-04-09 11:31:33
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:3lXgGreCz1mm8zmVtXpuyg
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

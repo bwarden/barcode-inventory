@@ -32,12 +32,12 @@ __PACKAGE__->table("locations");
 
 =head2 short_name
 
-  data_type: 'text'
+  data_type: 'citext'
   is_nullable: 1
 
 =head2 full_name
 
-  data_type: 'text'
+  data_type: 'citext'
   is_nullable: 1
 
 =head2 parent_id
@@ -57,9 +57,9 @@ __PACKAGE__->add_columns(
     sequence          => "locations_id_seq",
   },
   "short_name",
-  { data_type => "text", is_nullable => 1 },
+  { data_type => "citext", is_nullable => 1 },
   "full_name",
-  { data_type => "text", is_nullable => 1 },
+  { data_type => "citext", is_nullable => 1 },
   "parent_id",
   { data_type => "bigint", is_foreign_key => 1, is_nullable => 1 },
 );
@@ -155,8 +155,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 13:11:53
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:M9IFJOQIunjp0VJFXUzAWA
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2020-04-09 11:31:33
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:CWkzMgZnyj4N6xBjZB73Gg
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

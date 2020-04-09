@@ -32,7 +32,7 @@ __PACKAGE__->table("tags");
 
 =head2 tag
 
-  data_type: 'text'
+  data_type: 'citext'
   is_nullable: 1
 
 =cut
@@ -46,7 +46,7 @@ __PACKAGE__->add_columns(
     sequence          => "tags_id_seq",
   },
   "tag",
-  { data_type => "text", is_nullable => 1 },
+  { data_type => "citext", is_nullable => 1 },
 );
 
 =head1 PRIMARY KEY
@@ -93,8 +93,8 @@ __PACKAGE__->has_many(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2019-04-16 13:11:53
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:V4XSKr/Mh+mDSgCCPNSK/g
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2020-04-09 11:31:33
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:xH11Z/j0aa59Du3j3X00fg
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

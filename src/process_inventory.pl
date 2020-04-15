@@ -269,6 +269,9 @@ while(my $scans =
                       },
                       {
                         rows => 1,
+                        order_by => {
+                          -asc => 'added_at',
+                        },
                       },
                     )) {
                     $inventory->delete;

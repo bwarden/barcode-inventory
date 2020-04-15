@@ -1,0 +1,7 @@
+# Regenerate Schema
+dbicdump -o dump_directory=lib Inventory::Schema 'dbi:Pg:dbname=st_inventory'
+dbicdump -o dump_directory=lib -o components='["InflateColumn::DateTime"]' Inventory::Schema 'dbi:Pg:dbname=st_inventory'
+dbicdump -o dump_directory=lib Scans::Schema 'dbi:Pg:dbname=barcode_scans'
+
+
+dbicdump -o dump_directory=../lib BFPD::Schema 'dbi:CSV:f_dir=./BFPD;f_schema=bfpd;f_ext=.csv/r:limit_dialect=LimitXY'

@@ -54,26 +54,37 @@ $c->write;
 
 my $sth = $dbh->prepare('INSERT INTO scans (code, source) VALUES(?, ?);')
   or die $dbh->errstr;
- 
+
 my $bp = Linux::USBKeyboard->open(@bpid)
   or die "Couldn't grab device @bpid\n";
 
-my $sel = IO::Select->new;
-$sel->add($bp);
- 
+my $sel = IO::Select->new
+  or die "IO::Select failed";
+$sel->add($bp)
+  or die "failed to add device to select";
+
+local $| = 1;
+
 my %buffer;
 while(my @ready = $sel->can_read) {
-  #warn "ready count: ", scalar(@ready);
+  warn "ready count: ", scalar(@ready);
+  LINE:
   foreach my $fh (@ready) {
     my $v;
-    if(1 && $fh == $bp) { # treat linewise
-      chomp($v = <$fh>);
-      print $fh->pid, ' says: ', $v, "\n";
-      $sth->execute($v, $fh->pid)
-        or die $sth->errstr;
+    if($fh == $bp) { # treat linewise
+      warn $fh->pid." is ready";
+      while ($v = $fh->getline) {
+        chomp $v;
+        print $fh->pid, ' says: ', $v, "\n";
+        $sth->execute($v, $fh->pid)
+          or die $sth->errstr;
+      }
     }
     else { # charwise
       $v = getc($fh);
+      if (! defined $v) {
+        die "empty read";
+      }
       if ($v ne "\n") {
         push(@{$buffer{$fh->pid}}, $v);
       }

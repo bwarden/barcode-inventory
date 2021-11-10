@@ -95,7 +95,7 @@ while(my $scans =
       }
 
       # Check for an inventory command URI
-      if ($scan->code =~ m|^inventory://([^/]*)(?:/([^/]*))?|) {
+      if ($scan->code && $scan->code =~ m|^inventory://([^/]*)(?:/([^/]*))?|) {
         $location = $1;
         $operation = $2;
 

@@ -46,7 +46,7 @@ my $product_id = 0x0103;
  
 my @bpid = (0x0581, 0x0103); # barcode reader
 
-my $dbh = DBI->connect("dbi:Pg:dbname=$db", '', '')
+my $dbh = DBI->connect($dbd, '', '')
   or die "Couldn't open DB $db\n";
 
 # Commit config changes

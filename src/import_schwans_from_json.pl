@@ -31,6 +31,7 @@ use Modern::Perl;
 
 use Config::YAML;
 use Data::Dumper;
+use Data::Search;
 use Inventory::Schema;
 use JSON;
 use LWP::Simple qw(get);
@@ -53,65 +54,75 @@ my $schema = Inventory::Schema->connect($dbd);
 # Commit config changes
 $c->write;
 
-ITEM:
-while (my $json = decode_json(<>)) {
-  if ($json->{webshopIdentifier} && $json->{title}) {
-    my $code = $json->{webshopIdentifier};
-    my $order_num = $json->{mpn} || '';
-    my $brand = ((split(' ', ($json->{brand}||'Schwans'))))[0];
-    my $short_desc = $json->{title};
-    my @description;
-    push(@description, $brand, $json->{title});
-    if ($order_num) {
-      push(@description, "#$order_num");
-    }
-    if ($code) {
-      push(@description, "id:$code");
-    }
-    my $description = join(' ', @description);
+CAT:
+while (my $cat = decode_json(<>)) {
+  my @cat_prod = datasearch(
+    data => $cat,
+    search => 'keys',
+    find => 'mpn',
+    return => 'hashcontainer',
+  ) or next CAT;
 
-    print "$code|$short_desc|$description\n";
-
-    my $item;
-    my $item_id;
-
-    if ($code =~ /^\d{5}$/) {
-      my $product = $schema->resultset('SchwansProduct')->find_or_create(
-        {
-          id => $code,
-        },
-      ) or next ITEM;
-      if (! $product->item_id) {
-        warn "Creating Schwans item $description";
-        $item = $schema->resultset('Item')->create(
-          {
-            short_description => $short_desc,
-            description => $description,
-          },
-        );
-        $item_id = $item->id;
-        $product->update(
-          {
-            item_id => $item_id,
-          },
-        );
+  ITEM:
+  foreach my $cat_prod (@cat_prod) {
+    if ($cat_prod->{webshopIdentifier} && $cat_prod->{title}) {
+      my $code = $cat_prod->{webshopIdentifier};
+      my $order_num = $cat_prod->{mpn} || '';
+      my $brand = ((split(' ', ($cat_prod->{brand}||'Schwans'))))[0];
+      my $short_desc = $cat_prod->{title};
+      my @description;
+      push(@description, $brand, $cat_prod->{title});
+      if ($order_num) {
+        push(@description, "#$order_num");
       }
-      else {
-        $item = $schema->resultset('Item')->find(
-          {
-            id => $product->item_id,
-          }
-        );
-        $item_id = $item->id;
-        print "Updating $item_id $description\n";
-        $item->update(
-          {
-            short_description => $short_desc,
-            description => $description,
-          },
-        );
+      if ($code) {
+        push(@description, "id:$code");
       }
-    } 
+      my $description = join(' ', @description);
+
+      print "$code|$short_desc|$description\n";
+
+      my $item;
+      my $item_id;
+
+      if ($code =~ /^\d{5}$/) {
+        my $product = $schema->resultset('SchwansProduct')->find_or_create(
+          {
+            id => $code,
+          },
+        ) or next ITEM;
+        if (! $product->item_id) {
+          warn "Creating Schwans item $description";
+          $item = $schema->resultset('Item')->create(
+            {
+              short_description => $short_desc,
+              description => $description,
+            },
+          );
+          $item_id = $item->id;
+          $product->update(
+            {
+              item_id => $item_id,
+            },
+          );
+        }
+        else {
+          $item = $schema->resultset('Item')->find(
+            {
+              id => $product->item_id,
+            }
+          );
+          $item_id = $item->id;
+          print "Updating $item_id $description\n";
+          $item->update(
+            {
+              short_description => $short_desc,
+              description => $description,
+            },
+          );
+        }
+      }
+    }
   }
 }
 

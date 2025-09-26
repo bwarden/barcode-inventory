@@ -110,25 +110,49 @@ foreach my $item ($empty_items->all) {
         }
       }
 
-      if (!$desc) {
-        # Try upcdatabase.org
-        my $url = join('/', $upcdb_base_url, 'product', $gtin_str, $api_key);
-        my $response = get($url)
-          or next GTIN;
-        my $data = decode_json($response);
-        $desc = $data->{'description'} || $data->{'title'}
-          and print "Found $gtin_str in upcdatabase.org: $desc\n";
+      UPCDATABASE:
+      {
+        if (!$desc) {
+          # Try upcdatabase.org
+          my $url = join('/', $upcdb_base_url, 'product', $gtin_str, $api_key);
+          my $response = get($url)
+            or last UPCDATABASE;
+          my $data = decode_json($response);
+          $desc = $data->{'description'} || $data->{'title'}
+            and print "Found $gtin_str in upcdatabase.org: $desc\n";
+        }
       }
 
-      if (!$desc) {
-        # Try upcitemdb.com
-        my $url = "https://api.upcitemdb.com/prod/trial/lookup?upc=$gtin_str";
-        my $response = get($url)
-          or next GTIN;
-        my $data = decode_json($response);
-        if ($data && $data->{'items'} && ref $data->{'items'} eq 'ARRAY') {
-          $desc = $data->{'items'}[0]{'title'}
-            and print "Found $gtin_str in upcitemdb.com: $desc\n";
+      UPCITEMDB:
+      {
+        if (!$desc) {
+          # Try upcitemdb.com
+          my $url = "https://api.upcitemdb.com/prod/trial/lookup?upc=$gtin_str";
+          my $response = get($url)
+            or last UPCITEMDB;
+          my $data = decode_json($response);
+          if ($data && $data->{'items'} && ref $data->{'items'} eq 'ARRAY') {
+            $desc = $data->{'items'}[0]{'title'}
+              and print "Found $gtin_str in upcitemdb.com: $desc\n";
+          }
+        }
+      }
+
+      OPENFOODFACTS:
+      {
+        if (!$desc) {
+          # Try openfoodfacts.org
+          my $url = "https://world.openfoodfacts.org/api/v0/product/${gtin_str}.json";
+          my $response = get($url)
+            or last OPENFOODFACTS;
+          my $data = decode_json($response);
+          if ($data && $data->{'product'}) {
+            my $product = $data->{'product'};
+            if (ref $product eq 'HASH') {
+              $desc = $product->{'product_name_en'}
+                and print "Found $gtin_str in openfoodfacts.org: $desc\n";
+            }
+          }
         }
       }
 

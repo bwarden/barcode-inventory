@@ -5,3 +5,4 @@ DVD database	http://www.hometheaterinfo.com/dvdlist.htm
 	\copy dvd_csv(dvd_title, studio, released, status, sound, versions, price, rating, year, genre, aspect, upc, dvd_releasedate, id, timestamp) FROM '/tmp/dvd_csv.txt' WITH ENCODING 'iso-8859-13' DELIMITER ',' CSV HEADER;
 WIC	https://www.oregon.gov/oha/PH/HEALTHYPEOPLEFAMILIES/WIC/Pages/vendor_materials.aspx
 WIC	https://www.oregon.gov/OHA/PH/HealthyPeopleFamilies/wic/Pages/vendor.aspx
+OpenFoodFacts: https://world.openfoodfacts.org/api/v0/product/0810038680323.json

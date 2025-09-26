@@ -26,6 +26,7 @@ use Modern::Perl;
 
 use FindBin qw($Bin);
 use lib "$Bin/../lib";
+use lib "$Bin/../lib/perl5";
 
 use Config::YAML;
 use DBI;

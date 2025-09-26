@@ -1,0 +1,1 @@
+Barcode-based inventory system

@@ -30,6 +30,8 @@ use Business::ISBN;
 use Business::UPC;
 use Config::YAML;
 use DateTime;
+use DBI;
+use IO::Select;
 
 use Inventory::Schema;
 use Scans::Schema;
@@ -54,6 +56,7 @@ $c->set_scans_dbd($scans_dbd);
 # Connect to database
 my $schema = Inventory::Schema->connect($dbd);
 my $scans_schema = Scans::Schema->connect($scans_dbd);
+my $scans_listen_dbh = DBI->connect($scans_dbd);
 
 # Commit config changes
 $c->write;
@@ -68,6 +71,13 @@ my $lastrowid = 0;
 my $location;
 my $operation;
 
+# Subscribe to notifications so we can block instead of polling, or at least
+# poll much less often
+$scans_listen_dbh->do('LISTEN scan');
+my $fd = $scans_listen_dbh->func("getfd");
+my $sel = IO::Select->new($fd);
+
+LISTENLOOP:
 # Fetch entries within the given time
 while(my $scans =
   $scans_schema->resultset('Scan')->search(
@@ -79,234 +89,243 @@ while(my $scans =
     }
   )) {
 
-  if (! $scans->count) {
-    # Wait for update
-    print STDERR ".";
-    sleep 5;
-  }
-  else
-  {
-    SCAN:
-    foreach my $scan ($scans->all) {
-      if ($location && DateTime->compare($parser->parse_datetime($scan->date_added), $endtime) > 0) {
-        warn "Expired inventory operation at ".$scan->date_added."\n";
-        $location = '';
-        $operation = '';
-      }
-
-      # Check for an inventory command URI
-      if ($scan->code && $scan->code =~ m|^inventory://([^/]*)(?:/([^/]*))?|) {
-        $location = $1;
-        $operation = $2;
-
-        # Mark scan as claimed
-        $scan->update(
-          {
-            claimed => 1,
-          });
-
-        if ($location && $operation) {
-          warn "Starting $location $operation at ".$scan->date_added."\n";
+  if ($scans->count) {
+    {
+      SCAN:
+      foreach my $scan ($scans->all) {
+        if ($location && DateTime->compare($parser->parse_datetime($scan->date_added), $endtime) > 0) {
+          warn "Expired inventory operation at ".$scan->date_added."\n";
+          $location = '';
+          $operation = '';
         }
-        else {
-          warn "Ended inventory operation at ".$scan->date_added."\n";
-        }
-      }
-      else {
 
-        my %items;
-
-        # Iff we're in a valid location/operation, process barcodes
-        if ($location && $operation) {
-          if (my $code = get_validated_gtin($scan->code)) {
-
-            # Check for a UPC pattern
-            my $pattern = $schema->resultset('Pattern')->search(
-              {
-                upper => {
-                  '>=' => $code,
-                },
-                lower => {
-                  '<=' => $code,
-                },
-              },
-              {
-                  order_by => { -asc => 'upper - lower' },
-                  rows => 1,
-              },
-            );
-            if ($pattern && $pattern->count) {
-              foreach my $match ($pattern->all) {
-                my $item;
-                unless ($item = $match->item) {
-                  warn "Discarding by pattern: $code\n";
-                  $lastrowid = $scan->id;
-                  next SCAN; # Pattern indicates to discard this one
-                }
-                $items{$item->id}++; # Add one of this item
-              }
-            }
-
-            if (! %items) {
-
-              # Look up by GTIN
-              my $gtins = $schema->resultset('Gtin')->search(
-                {
-                  gtin => $code,
-                });
-
-              if (! $gtins->count ) {
-                # We'll need to create it
-                $gtins = $schema->resultset('Gtin')->create(
-                  {
-                    gtin => $code,
-                  });
-
-                # Now look it up again, so we get an iterable RS
-                $gtins = $schema->resultset('Gtin')->search(
-                  {
-                    gtin => $code,
-                  });
-
-              }
-
-              # Process multiple items for this GTIN
-              while (my $gtin = $gtins->next) {
-
-                # Add/link item
-                if (! $gtin->item_id) {
-                  warn "Creating item for $code\n";
-                  my $item = $schema->resultset('Item')->find_or_create(
-                    {
-                      short_description => $code,
-                    },
-                    {
-                      rows => 1,
-                    });
-                  $gtin->update(
-                    {
-                      item_id => $item->id,
-                    });
-                  $items{$item->id} += 1;
-                }
-                else {
-                  my $item_id = $gtin->item_id;
-
-                  # Handle multi-packs
-                  my $count = $gtin->item_quantity || 1;
-                  $items{$item_id} += $count;
-                }
-              }
-            }
-          }
-          elsif ($code = get_schwans_code($scan->code)) {
-            my $product = $schema->resultset('SchwansProduct')->find_or_create(
-              {
-                id => $code,
-              },
-            ) or next SCAN;
-            if (! $product->item_id) {
-              warn "Creating Schwans item $code\n";
-              my $item = $schema->resultset('Item')->update_or_new(
-                {
-                  short_description => "Schwan's $code",
-                },
-              );
-              $items{$item->id}++;
-              $product->update(
-                {
-                  item_id => $item->id,
-                },
-              );
-            }
-            else {
-              my $item = $schema->resultset('Item')->find(
-                {
-                  id => $product->item_id,
-                }
-              );
-              $items{$product->item_id}++;
-            }
-          }
-
-          # Add/remove item to/from location
-          if (my $loc = $schema->resultset('Location')->find(
-              {
-                short_name => $location,
-              }
-            )) {
-
-            while (my ($item_id, $count) = each %items) {
-              warn "Pondering $count of $item_id";
-              my $item = $schema->resultset('Item')->find(
-                {
-                  id => $item_id,
-                });
-              my @message = (
-                "Scanned $count",
-                "of",
-                ($item && $item->short_description || 'unknown item'),
-                "to",
-                $loc->full_name
-              );
-              my $completed = 0;
-              while ($count--) {
-                if ($operation eq 'add') {
-                  my $inventory = $schema->resultset('Inventory')->create(
-                    {
-                      item_id => $item_id,
-                      location_id => $loc->id,
-                    });
-                  $completed++;
-                  $message[0] = "Added $completed";
-                }
-
-                if ($operation eq 'delete' || $operation eq 'remove') {
-                  if (my $inventory = $schema->resultset('Inventory')->find(
-                      {
-                        item_id => $item_id,
-                        location_id => $loc->id,
-                      },
-                      {
-                        rows => 1,
-                        order_by => {
-                          -asc => 'added_at',
-                        },
-                      },
-                    )) {
-                    $inventory->delete;
-                    $completed++;
-                    $message[0] = "Removed $completed";
-                  }
-                  else {
-                    warn "No more ".($item->short_description||'[unknown]')." in ".$loc->full_name."\n";
-                    $message[0] = "Removed all $completed";
-                  }
-                }
-              }
-              print join(" ", @message), "\n";
-            }
-          }
+        # Check for an inventory command URI
+        if ($scan->code && $scan->code =~ m|^inventory://([^/]*)(?:/([^/]*))?|) {
+          $location = $1;
+          $operation = $2;
 
           # Mark scan as claimed
           $scan->update(
             {
               claimed => 1,
             });
-        }
-      }
 
-      # Bump the time interval so we a) don't reconsider things we've already
-      # tried, and b) allow new codes to push us along
-      $lastrowid = $scan->id;
-      $inittime = $parser->parse_datetime($scan->date_added);
-      $endtime  = $inittime->clone->add(seconds => $TIMEOUT);
+          if ($location && $operation) {
+            warn "Starting $location $operation at ".$scan->date_added."\n";
+          }
+          else {
+            warn "Ended inventory operation at ".$scan->date_added."\n";
+          }
+        }
+        else {
+
+          my %items;
+
+          # Iff we're in a valid location/operation, process barcodes
+          if ($location && $operation) {
+            if (my $code = get_validated_gtin($scan->code)) {
+              print "VALIDATED GTIN: $code\n";
+
+              # Check for a UPC pattern
+              my $pattern = $schema->resultset('Pattern')->search(
+                {
+                  upper => {
+                    '>=' => $code,
+                  },
+                  lower => {
+                    '<=' => $code,
+                  },
+                },
+                {
+                  order_by => { -asc => 'upper - lower' },
+                  rows => 1,
+                },
+              );
+              if ($pattern && $pattern->count) {
+                foreach my $match ($pattern->all) {
+                  my $item;
+                  unless ($item = $match->item) {
+                    warn "Discarding by pattern: $code\n";
+                    $lastrowid = $scan->id;
+                    next SCAN; # Pattern indicates to discard this one
+                  }
+                  $items{$item->id}++; # Add one of this item
+                }
+              }
+
+              if (! %items) {
+
+                # Look up by GTIN
+                my $gtins = $schema->resultset('Gtin')->search(
+                  {
+                    gtin => $code,
+                  });
+
+                if (! $gtins->count ) {
+                  # We'll need to create it
+                  $gtins = $schema->resultset('Gtin')->create(
+                    {
+                      gtin => $code,
+                    });
+
+                  # Now look it up again, so we get an iterable RS
+                  $gtins = $schema->resultset('Gtin')->search(
+                    {
+                      gtin => $code,
+                    });
+
+                }
+
+                # Process multiple items for this GTIN
+                while (my $gtin = $gtins->next) {
+
+                  # Add/link item
+                  if (! $gtin->item_id) {
+                    warn "Creating item for $code\n";
+                    my $item = $schema->resultset('Item')->find_or_create(
+                      {
+                        short_description => $code,
+                      },
+                      {
+                        rows => 1,
+                      });
+                    $gtin->update(
+                      {
+                        item_id => $item->id,
+                      });
+                    $items{$item->id} += 1;
+                  }
+                  else {
+                    my $item_id = $gtin->item_id;
+
+                    # Handle multi-packs
+                    my $count = $gtin->item_quantity || 1;
+                    $items{$item_id} += $count;
+                  }
+                }
+              }
+            }
+            elsif ($code = get_schwans_code($scan->code)) {
+              my $product = $schema->resultset('SchwansProduct')->find_or_create(
+                {
+                  id => $code,
+                },
+              ) or next SCAN;
+              if (! $product->item_id) {
+                warn "Creating Schwans item $code\n";
+                my $item = $schema->resultset('Item')->update_or_new(
+                  {
+                    short_description => "Schwan's $code",
+                  },
+                );
+                $items{$item->id}++;
+                $product->update(
+                  {
+                    item_id => $item->id,
+                  },
+                );
+              }
+              else {
+                my $item = $schema->resultset('Item')->find(
+                  {
+                    id => $product->item_id,
+                  }
+                );
+                $items{$product->item_id}++;
+              }
+            }
+
+            # Add/remove item to/from location
+            if (my $loc = $schema->resultset('Location')->find(
+                {
+                  short_name => $location,
+                }
+              )) {
+
+              while (my ($item_id, $count) = each %items) {
+                warn "Pondering $count of $item_id";
+                my $item = $schema->resultset('Item')->find(
+                  {
+                    id => $item_id,
+                  });
+                my @message = (
+                  "Scanned $count",
+                  "of",
+                  ($item && $item->short_description || 'unknown item'),
+                  "to",
+                  $loc->full_name
+                );
+                my $completed = 0;
+                while ($count--) {
+                  if ($operation eq 'add') {
+                    my $inventory = $schema->resultset('Inventory')->create(
+                      {
+                        item_id => $item_id,
+                        location_id => $loc->id,
+                      });
+                    $completed++;
+                    $message[0] = "Added $completed";
+                  }
+
+                  if ($operation eq 'delete' || $operation eq 'remove') {
+                    if (my $inventory = $schema->resultset('Inventory')->find(
+                        {
+                          item_id => $item_id,
+                          location_id => $loc->id,
+                        },
+                        {
+                          rows => 1,
+                          order_by => {
+                            -asc => 'added_at',
+                          },
+                        },
+                      )) {
+                      $inventory->delete;
+                      $completed++;
+                      $message[0] = "Removed $completed";
+                    }
+                    else {
+                      warn "No more ".($item->short_description||'[unknown]')." in ".$loc->full_name."\n";
+                      $message[0] = "Removed all $completed";
+                    }
+                  }
+                }
+                print join(" ", @message), "\n";
+              }
+            }
+
+            # Mark scan as claimed
+            $scan->update(
+              {
+                claimed => 1,
+              });
+          }
+        }
+
+        # Bump the time interval so we a) don't reconsider things we've already
+        # tried, and b) allow new codes to push us along
+        $lastrowid = $scan->id;
+        $inittime = $parser->parse_datetime($scan->date_added);
+        $endtime  = $inittime->clone->add(seconds => $TIMEOUT);
+      }
     }
-    sleep 1;
+  }
+  else {
+
+    # Now wait until we get a notification
+    while(1) {
+      print STDERR ".";
+      $sel->can_read(60); # long timeout here just in case
+      my $notify = $scans_listen_dbh->func("pg_notifies");
+      if ($notify) {
+        my ($relname, $pid) = @$notify;
+        my $row = $scans_listen_dbh->selectrow_hashref("SELECT now()");
+        print "$relname from PID $pid at $row->{now}\n";
+      }
+      next LISTENLOOP;
+    }
   }
 }
-
-
 
 exit;
 
@@ -346,7 +365,16 @@ sub get_validated_gtin {
   elsif (length($code) == 8) {
     # Maybe UPC-E OR EAN-8
     if (my $upc = Business::UPC->type_e($code)) {
-      return 1 * $upc->as_upc;
+      if ($upc->is_valid) {
+        return 1 * $upc->as_upc;
+      }
+    }
+    # Try something for Trader Joe's
+    # More likely an RCN-8; don't know how to validate that though.
+    if (my $upc = Business::UPC->new('00'.$code.'00')) {
+      if ($upc->is_valid) {
+        return 1 * $upc->as_upc;
+      }
     }
   }
 }

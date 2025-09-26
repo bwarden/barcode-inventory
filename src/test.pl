@@ -24,9 +24,11 @@ use utf8;
 
 use Modern::Perl;
 
+use FindBin qw($Bin);
+use lib "$Bin/../lib";
+
 use Config::YAML;
 use DBI;
-use FindBin qw($Bin);
 use IO::Select;
 use Linux::USBKeyboard;
 

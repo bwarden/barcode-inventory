@@ -286,8 +286,8 @@ get('/gtins' => sub ($c) {
     $c->render(template => 'gtins', gtins => [ $gtins_rs->all ]);
 })->name('gtins');
 
-# GET /generate_barcode/*code
-get('/generate_barcode/*code' => sub ($c) {
+# GET /barcode/*code
+get('/barcode/*code' => sub ($c) {
     my $code = $c->param('code');
     my $symbology;
 

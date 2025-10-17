@@ -286,9 +286,9 @@ get('/gtins' => sub ($c) {
     $c->render(template => 'gtins', gtins => [ $gtins_rs->all ]);
 })->name('gtins');
 
-# GET /generate_barcode
-get('/generate_barcode' => sub ($c) {
-    my $code = $c->param('data');
+# GET /generate_barcode/*code
+get('/generate_barcode/*code' => sub ($c) {
+    my $code = $c->param('code');
     my $symbology;
 
     $c->app->log->debug("Received request for barcode image of '$code'");
@@ -635,8 +635,9 @@ __DATA__
         <tbody>
         % for my $gtin (@$gtins) {
             <tr>
-                <td><%= $gtin->gtin %></td><td>
-                    <img src="/generate_barcode?data=<%= $gtin->gtin %>" alt="Barcode for <%= $gtin->gtin %>" height="50">
+                <td><%= $gtin->gtin %></td>
+                <td>
+                    <img src="<%= url_for('barcode_image', {code => $gtin->gtin}) %>" alt="Barcode for <%= $gtin->gtin %>" height="50">
                 </td>
                 <td>
                     % if (my $item = $gtin->item) {
@@ -686,7 +687,7 @@ __DATA__
             % for my $gtin ($item->gtins) {
             <tr>
                 <td><%= $gtin->gtin %></td>
-                <td><img src="/generate_barcode?data=<%= $gtin->gtin %>" alt="Barcode for <%= $gtin->gtin %>" height="50"></td>
+                <td><img src="<%= url_for('barcode_image', {code => $gtin->gtin}) %>" alt="Barcode for <%= $gtin->gtin %>" height="50"></td>
                 <td>
                     <form action="<%= url_for('/gtin/' . $gtin->id . '/delete') %>" method="POST" style="padding:0; box-shadow:none;">
                         <button type="submit" class="delete" style="padding: 5px 10px;">Remove</button>
@@ -755,10 +756,10 @@ __DATA__
                     <td>
                         <div style="display: flex; gap: 1em; margin-top: 0.5em;">
                             <div>
-                                <img src="/generate_barcode?data=inventory%3A%2F%2F<%= $loc->short_name %>%2Fadd" alt="QR Code for adding to <%= $loc->short_name %>" width="80" height="80">
+                                <img src="<%= url_for('barcode_image', {code => 'inventory://' . $loc->short_name . '/add'}) %>" alt="QR Code for adding to <%= $loc->short_name %>" width="80" height="80">
                             </div>
                             <div>
-                                <img src="/generate_barcode?data=inventory%3A%2F%2F<%= $loc->short_name %>%2Fremove" alt="QR Code for removing from <%= $loc->short_name %>" width="80" height="80">
+                                <img src="<%= url_for('barcode_image', {code => 'inventory://' . $loc->short_name . '/remove'}) %>" alt="QR Code for removing from <%= $loc->short_name %>" width="80" height="80">
                             </div>
                         </div>
                     </td>

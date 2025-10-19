@@ -33,6 +33,7 @@ use DateTime;
 use DBI;
 use IO::Select;
 
+use SVG::Barcode::EAN8;
 use Inventory::Schema;
 use Scans::Schema;
 
@@ -366,15 +367,26 @@ sub get_validated_gtin {
     # Maybe UPC-E OR EAN-8
     if (my $upc = Business::UPC->type_e($code)) {
       if ($upc->is_valid) {
+        # Convert to UPC-A for database consistency
         return 1 * $upc->as_upc;
       }
     }
-    # Try something for Trader Joe's
-    # More likely an RCN-8; don't know how to validate that though.
-    if (my $upc = Business::UPC->new('00'.$code.'00')) {
-      if ($upc->is_valid) {
-        return 1 * $upc->as_upc;
+    else {
+      # Validate as EAN-8
+      # We can leverage the SVG generator, which will die on an invalid code.
+      my $is_valid = eval {
+          SVG::Barcode::EAN8->new->plot($code); 1;
+      };
+      if ($is_valid) {
+        return 1 * $code;
       }
     }
+#     # Try something for Trader Joe's
+#     # More likely an RCN-8; don't know how to validate that though.
+#     if (my $upc = Business::UPC->new('00'.$code.'00')) {
+#       if ($upc->is_valid) {
+#         return 1 * $upc->as_upc;
+#       }
+#     }
   }
 }

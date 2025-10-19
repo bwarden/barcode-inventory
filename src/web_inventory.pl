@@ -83,7 +83,7 @@ get '/' => sub ($c) {
 
         return unless exists $children_of{$parent_id};
 
-        for my $id (sort { $items{$a}->short_description cmp $items{$b}->short_description } @{$children_of{$parent_id}}) {
+        for my $id (sort { lc($items{$a}->short_description) cmp lc($items{$b}->short_description) } @{$children_of{$parent_id}}) {
             my $item = $items{$id};
             my $direct_count = $direct_counts{$id} || 0;
             my @child_nodes = $build_tree->($id);
@@ -173,7 +173,7 @@ get('/item/:id' => sub ($c) {
         my @nodes;
         return unless exists $children_of_for_dropdown{$parent_id};
 
-        for my $item_id (sort { $items_for_dropdown{$a}->short_description cmp $items_for_dropdown{$b}->short_description } @{$children_of_for_dropdown{$parent_id}}) {
+        for my $item_id (sort { lc($items_for_dropdown{$a}->short_description) cmp lc($items_for_dropdown{$b}->short_description) } @{$children_of_for_dropdown{$parent_id}}) {
             my $item_node = $items_for_dropdown{$item_id};
             push @nodes, { item => $item_node, level => $level };
             push @nodes, $build_parent_tree->($item_id, $level + 1);
@@ -274,6 +274,21 @@ post '/gtin/:id/delete' => sub ($c) {
     $c->redirect_to('/item/' . $item_id);
 };
 
+# POST /gtin/:id/update_quantity
+post('/gtin/:id/update_quantity' => sub ($c) {
+    my $id = $c->param('id');
+    my $quantity = $c->param('quantity');
+    my $gtin = $c->app->schema->resultset('Gtin')->find($id);
+    return $c->reply->not_found unless $gtin;
+
+    $gtin->update({ item_quantity => $quantity });
+    $c->flash(message => "Quantity for GTIN " . $gtin->gtin . " updated to $quantity.");
+
+    # Redirect back to the page the user was on
+    my $redirect_to = $c->param('redirect_to') || $c->url_for('gtins');
+    $c->redirect_to($redirect_to);
+})->name('gtin_update_quantity');
+
 # GET /gtins
 get('/gtins' => sub ($c) {
     my $gtins_rs = $c->app->schema->resultset('Gtin')->search(
@@ -286,9 +301,9 @@ get('/gtins' => sub ($c) {
     $c->render(template => 'gtins', gtins => [ $gtins_rs->all ]);
 })->name('gtins');
 
-# GET /generate_barcode
-get('/generate_barcode' => sub ($c) {
-    my $code = $c->param('data');
+# GET /barcode/*code
+get('/barcode/*code' => sub ($c) {
+    my $code = $c->param('code');
     my $symbology;
 
     $c->app->log->debug("Received request for barcode image of '$code'");
@@ -336,22 +351,22 @@ get('/generate_barcode' => sub ($c) {
     my $svg_data = eval {
         my $generator;
         if ($symbology eq 'EAN13') {
-            $generator = SVG::Barcode::EAN13->new(lineheight => 20);
+            $generator = SVG::Barcode::EAN13->new();
         }
         elsif ($symbology eq 'UPCA') {
-            $generator = SVG::Barcode::UPCA->new(lineheight => 20);
+            $generator = SVG::Barcode::UPCA->new();
         }
         elsif ($symbology eq 'UPCE') {
-            $generator = SVG::Barcode::UPCE->new(lineheight => 20);
+            $generator = SVG::Barcode::UPCE->new();
         }
         elsif ($symbology eq 'EAN8') {
-            $generator = SVG::Barcode::EAN8->new(lineheight => 20);
+            $generator = SVG::Barcode::EAN8->new();
         }
         elsif ($symbology eq 'Code128') {
-            $generator = SVG::Barcode::Code128->new(height => 50);
+            $generator = SVG::Barcode::Code128->new();
         }
         elsif ($symbology eq 'QR') {
-            $generator = SVG::Barcode::QRCode->new(height => 50);
+            $generator = SVG::Barcode::QRCode->new(); # QR code size is better controlled by height/width attributes on the <img>
         }
         return unless $generator;
         return $generator->plot($code);
@@ -419,6 +434,35 @@ post('/inventory/adjust' => sub ($c) {
     $c->redirect_to($redirect_to);
 })->name('inventory_adjust');
 
+# POST /inventory/set_quantity
+post('/inventory/set_quantity' => sub ($c) {
+    my $item_id     = $c->param('item_id');
+    my $location_id = $c->param('location_id');
+    my $quantity    = $c->param('quantity');
+
+    return $c->reply->bad_request('Invalid quantity') unless defined $quantity && $quantity =~ /^\d+$/;
+
+    my $item = $c->app->schema->resultset('Item')->find($item_id);
+    my $loc  = $c->app->schema->resultset('Location')->find($location_id);
+    return $c->reply->not_found unless $item && $loc;
+
+    $c->app->schema->txn_do(sub {
+        # Remove all existing inventory for this item/location
+        $c->app->schema->resultset('Inventory')->search({
+            item_id     => $item_id,
+            location_id => $location_id,
+        })->delete_all;
+
+        # Add the new quantity
+        $c->app->schema->resultset('Inventory')->populate([
+            { item_id => $item_id, location_id => $location_id }
+        ] x $quantity) if $quantity > 0;
+    });
+
+    $c->flash(message => "Quantity for '".$item->short_description."' in '".$loc->short_name."' set to $quantity.");
+    $c->redirect_to($c->url_for('location_show', {id => $location_id}));
+})->name('inventory_set_quantity');
+
 # GET /location/:id
 get('/location/:id' => sub ($c) {
     my $id = $c->param('id');
@@ -465,13 +509,14 @@ __DATA__
         nav { background: #333; color: white; padding: 1rem; }
         nav a { color: white; text-decoration: none; margin-right: 15px; }
         nav a:hover { text-decoration: underline; }
-        .container { padding: 2rem; max-width: 1200px; margin: auto; }
+        .container { padding: 2rem; }
         h1, h2, h3 { border-bottom: 2px solid #ddd; padding-bottom: 10px; color: #333; }
         table { border-collapse: collapse; width: 100%; margin-top: 1rem; background: white; }
         th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
         th { background-color: #f2f2f2; }
         tr:nth-child(even) { background-color: #f9f9f9; }
-        form { display: grid; gap: 1rem; background: white; padding: 1.5rem; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 1rem; }
+        form { display: grid; gap: 1rem; background: white; padding: 1.5rem; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 1rem; max-width: 100%; }
+        form input, form select, form textarea { width: 100%; box-sizing: border-box; }
         input, select, button { padding: 0.8rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
         button { background-color: #5cb85c; color: white; border: none; cursor: pointer; }
         button:hover { background-color: #4cae4c; }
@@ -630,13 +675,15 @@ __DATA__
                 <th>GTIN</th>
                 <th>Barcode</th>
                 <th>Linked Item</th>
+                <th>Quantity</th>
             </tr>
         </thead>
         <tbody>
         % for my $gtin (@$gtins) {
             <tr>
-                <td><%= $gtin->gtin %></td><td>
-                    <img src="/generate_barcode?data=<%= $gtin->gtin %>" alt="Barcode for <%= $gtin->gtin %>" height="50">
+                <td><%= $gtin->gtin %></td>
+                <td>
+                    <img src="<%= url_for('barcode_image', {code => $gtin->gtin}) %>" alt="Barcode for <%= $gtin->gtin %>" height="100">
                 </td>
                 <td>
                     % if (my $item = $gtin->item) {
@@ -644,6 +691,13 @@ __DATA__
                     % } else {
                         <span style="color: #999;">Not linked</span>
                     % }
+                </td>
+                <td>
+                    <form action="<%= url_for('gtin_update_quantity', {id => $gtin->id}) %>" method="POST" style="box-shadow:none; padding:0; display:flex; gap:5px;">
+                        <input type="number" name="quantity" value="<%= $gtin->item_quantity %>" min="1" style="width: 60px;">
+                        <input type="hidden" name="redirect_to" value="<%= url_for('gtins') %>">
+                        <button type="submit" style="padding: 5px 10px;">Set</button>
+                    </form>
                 </td>
             </tr>
         % }
@@ -661,8 +715,8 @@ __DATA__
         <form action="<%= url_for('/item/' . $item->id . '/update') %>" method="POST">
             <label for="short_description">Short Description:</label>
             <input type="text" name="short_description" value="<%= $item->short_description %>" required>
-            <label for="description">Long Description:</label>
-            <input type="textarea" name="description" value="<%= $item->description %>">
+            <label for="description">Long Description (optional):</label>
+            <textarea name="description" rows="3"><%= $item->description %></textarea>
             <label for="parent_id">Parent Item:</label>
             <select name="parent_id">
                 <option value="">-- None --</option>
@@ -678,16 +732,27 @@ __DATA__
             <button type="submit" class="delete">Delete This Item</button>
         </form>
     </div>
-
     <div class="panel">
         <h2>Barcodes (GTINs)</h2>
-        <table>
-            <thead><tr><th>GTIN</th><th>Barcode</th><th>Action</th></tr></thead>
+        <table style="width: 100%; table-layout: fixed;">
+            <colgroup>
+                <col style="width: 30%;">
+                <col style="width: 40%;">
+                <col style="width: 15%;">
+                <col style="width: 15%;">
+            </colgroup>
+            <thead><tr><th>GTIN</th><th>Barcode</th><th>Quantity</th><th>Action</th></tr></thead>
             % for my $gtin ($item->gtins) {
             <tr>
                 <td><%= $gtin->gtin %></td>
-                <td><img src="/generate_barcode?data=<%= $gtin->gtin %>" alt="Barcode for <%= $gtin->gtin %>" height="50"></td>
+                <td><img src="<%= url_for('barcode_image', {code => $gtin->gtin}) %>" alt="Barcode for <%= $gtin->gtin %>" height="100"></td>
                 <td>
+                    <form action="<%= url_for('gtin_update_quantity', {id => $gtin->id}) %>" method="POST" style="box-shadow:none; padding:0; display:flex; flex-direction: column; gap:5px;">
+                        <input type="number" name="quantity" value="<%= $gtin->item_quantity %>" min="1" style="width: 100%; box-sizing: border-box;">
+                        <input type="hidden" name="redirect_to" value="<%= url_for('item_show', {id => $item->id}) %>">
+                        <button type="submit" style="padding: 5px 10px;">Set</button>
+                    </form>
+                </td><td>
                     <form action="<%= url_for('/gtin/' . $gtin->id . '/delete') %>" method="POST" style="padding:0; box-shadow:none;">
                         <button type="submit" class="delete" style="padding: 5px 10px;">Remove</button>
                     </form>
@@ -734,7 +799,6 @@ __DATA__
         </form>
     </div>
 </div>
-
 @@ locations.html.ep
 % layout 'layout';
 <h1>Locations</h1>
@@ -755,10 +819,10 @@ __DATA__
                     <td>
                         <div style="display: flex; gap: 1em; margin-top: 0.5em;">
                             <div>
-                                <img src="/generate_barcode?data=inventory%3A%2F%2F<%= $loc->short_name %>%2Fadd" alt="QR Code for adding to <%= $loc->short_name %>" width="80" height="80">
+                                <img src="<%= url_for('barcode_image', {code => 'inventory://' . $loc->short_name . '/add'}) %>" alt="QR Code for adding to <%= $loc->short_name %>" width="100" height="100">
                             </div>
                             <div>
-                                <img src="/generate_barcode?data=inventory%3A%2F%2F<%= $loc->short_name %>%2Fremove" alt="QR Code for removing from <%= $loc->short_name %>" width="80" height="80">
+                                <img src="<%= url_for('barcode_image', {code => 'inventory://' . $loc->short_name . '/remove'}) %>" alt="QR Code for removing from <%= $loc->short_name %>" width="100" height="100">
                             </div>
                         </div>
                     </td>
@@ -788,12 +852,19 @@ __DATA__
         <h2>Items in this Location</h2>
         % if (@$items_in_location) {
             <table>
-                <thead><tr><th>Item</th><th>Count</th></tr></thead>
+                <thead><tr><th>Item</th><th style="width: 150px;">Count</th></tr></thead>
                 <tbody>
                 % for my $item (@$items_in_location) {
                     <tr>
                         <td><a href="<%= url_for('item_show', {id => $item->get_column('item_id')}) %>"><%= $item->get_column('short_description') %></a></td>
-                        <td><%= $item->get_column('count') %></td>
+                        <td>
+                            <form action="<%= url_for('inventory_set_quantity') %>" method="POST" style="box-shadow:none; padding:0; display:flex; gap:5px;">
+                                <input type="hidden" name="item_id" value="<%= $item->get_column('item_id') %>">
+                                <input type="hidden" name="location_id" value="<%= $location->id %>">
+                                <input type="number" name="quantity" value="<%= $item->get_column('count') %>" min="0" style="width: 100%; box-sizing: border-box;">
+                                <button type="submit" style="padding: 5px 10px;">Set</button>
+                            </form>
+                        </td>
                     </tr>
                 % }
                 </tbody>

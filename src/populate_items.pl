@@ -162,6 +162,7 @@ foreach my $item ($empty_items->all) {
         $item->update(
           {
             description => $desc,
+            short_description => $desc,
           }
         );
       }

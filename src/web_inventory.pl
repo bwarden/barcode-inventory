@@ -17,6 +17,7 @@ use SVG::Barcode::QRCode;
 use Business::UPC;
 use Business::ISBN;
 use Business::Barcode::EAN13 qw(valid_barcode); # Validates EAN13
+use HTTP::Date qw(time2str);
 
 # --- Configuration and Database Connection ---
 
@@ -126,15 +127,33 @@ get '/' => sub ($c) {
 
 # GET /items
 get('/items' => sub ($c) {
-    my $items_rs = $c->app->schema->resultset('Item')->search(
-        {},
-        {
-            order_by => { -asc => 'me.short_description' },
-            prefetch => 'parent'
+    # Build a hierarchical list of all items
+    my %items;
+    my %children_of;
+    my $all_items_list = [ $c->app->schema->resultset('Item')->search({}, { prefetch => 'parent' })->all ];
+    for my $item (@$all_items_list) {
+        $items{$item->id} = $item;
+        push @{ $children_of{$item->parent_id || 0} }, $item->id;
+    }
+
+    my $build_item_tree;
+    $build_item_tree = sub {
+        my ($parent_id, $level) = @_;
+        my @nodes;
+        return unless exists $children_of{$parent_id};
+
+        for my $item_id (sort { lc($items{$a}->short_description) cmp lc($items{$b}->short_description) } @{$children_of{$parent_id}}) {
+            my $item_node = $items{$item_id};
+            push @nodes, { item => $item_node, level => $level };
+            push @nodes, $build_item_tree->($item_id, $level + 1);
         }
-    );
-    # Pass an array to the template to avoid iterator exhaustion
-    $c->render(template => 'items', items => [ $items_rs->all ]);
+        return @nodes;
+    };
+    my @item_tree = $build_item_tree->(0, 0);
+
+    my $all_items_for_dropdown = [ $c->app->schema->resultset('Item')->search({}, { order_by => 'short_description' })->all ];
+
+    $c->render(template => 'items', item_tree => \@item_tree, all_items => $all_items_for_dropdown);
 })->name('items');
 
 # GET /item/:id
@@ -151,10 +170,11 @@ get('/item/:id' => sub ($c) {
     my $locations_rs = $c->app->schema->resultset('Inventory')->search(
         { item_id => $id },
         {
-            select   => [ 'location.short_name', { count => 'location_id' } ],
-            as       => [qw/location_name count/],
+            select   => [ 'location.id', 'location.full_name', { count => 'location_id' } ],
+            as       => [qw/location_id location_name count/],
             join     => 'location',
-            group_by => 'location.short_name'
+            group_by => [ 'location.id', 'location.full_name' ],
+            order_by => 'location.full_name'
         }
     );
 
@@ -183,14 +203,33 @@ get('/item/:id' => sub ($c) {
     my @parent_item_list = $build_parent_tree->(0, 0);
 
 
-    my $all_locations_rs = $c->app->schema->resultset('Location')->search({}, { order_by => 'short_name' });
+    # Build a hierarchical list of all locations for the dropdown
+    my %locations_for_dropdown;
+    my %loc_children_of;
+    my $all_locs = [ $c->app->schema->resultset('Location')->all ];
+    for my $l (@$all_locs) {
+        $locations_for_dropdown{$l->id} = $l;
+        push @{ $loc_children_of{$l->parent_id || 0} }, $l->id;
+    }
+    my $build_loc_tree;
+    $build_loc_tree = sub {
+        my ($parent_id, $level) = @_;
+        my @nodes;
+        return unless exists $loc_children_of{$parent_id};
+        for my $loc_id (sort { lc($locations_for_dropdown{$a}->short_name) cmp lc($locations_for_dropdown{$b}->short_name) } @{$loc_children_of{$parent_id}}) {
+            push @nodes, { location => $locations_for_dropdown{$loc_id}, level => $level };
+            push @nodes, $build_loc_tree->($loc_id, $level + 1);
+        }
+        return @nodes;
+    };
+    my @all_locations_list = $build_loc_tree->(0, 0);
 
     $c->render(
         template => 'item',
         item => $item,
         locations => [ $locations_rs->all ],
         parent_item_list => \@parent_item_list,
-        all_locations => [ $all_locations_rs->all ]
+        all_locations_list => \@all_locations_list
     );
 })->name('item_show');
 
@@ -284,9 +323,13 @@ post('/gtin/:id/update_quantity' => sub ($c) {
     $gtin->update({ item_quantity => $quantity });
     $c->flash(message => "Quantity for GTIN " . $gtin->gtin . " updated to $quantity.");
 
-    # Redirect back to the page the user was on
-    my $redirect_to = $c->param('redirect_to') || $c->url_for('gtins');
-    $c->redirect_to($redirect_to);
+    if ($c->req->is_xhr) {
+        return $c->render(json => { success => 1, message => "Quantity updated to $quantity." });
+    } else {
+        # Redirect back to the page the user was on
+        my $redirect_to = $c->param('redirect_to') || $c->url_for('gtins');
+        $c->redirect_to($redirect_to);
+    }
 })->name('gtin_update_quantity');
 
 # GET /gtins
@@ -376,6 +419,9 @@ get('/barcode/*code' => sub ($c) {
         return $c->reply->not_found;
     }
 
+    # Set caching headers for one year
+    $c->res->headers->header('Expires' => time2str(time + 365 * 24 * 60 * 60));
+
     $c->render(data => $svg_data, format => 'svg');
 })->name('barcode_image');
 
@@ -460,7 +506,11 @@ post('/inventory/set_quantity' => sub ($c) {
     });
 
     $c->flash(message => "Quantity for '".$item->short_description."' in '".$loc->short_name."' set to $quantity.");
-    $c->redirect_to($c->url_for('location_show', {id => $location_id}));
+    if ($c->req->is_xhr) {
+        return $c->render(json => { success => 1, message => "Quantity set to $quantity." });
+    } else {
+        $c->redirect_to($c->url_for('location_show', {id => $location_id}));
+    }
 })->name('inventory_set_quantity');
 
 # GET /location/:id
@@ -527,8 +577,15 @@ __DATA__
         .flash.error { background-color: #f2dede; color: #a94442; border: 1px solid #ebccd1; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
         .panel { background: white; padding: 1.5rem; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <body>
     <nav>
         <a href="<%= url_for('/') %>">Dashboard</a>
@@ -545,6 +602,44 @@ __DATA__
         % }
         <%= content %>
     </div>
+    <div id="toast-container" style="position: fixed; top: 20px; right: 20px; z-index: 1050;"></div>
+
+    <script>
+        function showToast(message, isError = false) {
+            const toastId = 'toast-' + Date.now();
+            const toastClass = isError ? 'flash error' : 'flash message';
+            const toast = $(`<div id="${toastId}" class="${toastClass}" style="display: none;">${message}</div>`);
+            $('#toast-container').append(toast);
+            toast.fadeIn(300);
+            setTimeout(() => {
+                toast.fadeOut(400, () => toast.remove());
+            }, 3000);
+        }
+
+        $(document).ready(function() {
+            // Handle dynamic forms
+            $('body').on('submit', 'form.dynamic-form', function(e) {
+                e.preventDefault();
+                const $form = $(this);
+                const url = $form.attr('action');
+                const method = $form.attr('method');
+
+                $.ajax({
+                    url: url,
+                    type: method,
+                    data: $form.serialize(),
+                    dataType: 'json',
+                    success: function(data) {
+                        showToast(data.message || 'Success!');
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON ? xhr.responseJSON.error : 'An unknown error occurred.';
+                        showToast(errorMsg, true);
+                    }
+                });
+            });
+        });
+    </script>
     <script>
         document.querySelectorAll('button.delete').forEach(button => {
             button.addEventListener('click', e => {
@@ -627,25 +722,22 @@ __DATA__
 <div class="grid">
     <div class="panel">
         <h2>All Items</h2>
-        <table>
-            <thead><tr><th>ID</th><th>Short Description</th><th>Long Description</th><th>Parent Item</th></tr></thead>
-            <tbody>
-            % for my $item (@$items) {
-                <tr>
-                    <td><%= $item->id %></td>
-                    <td><a href="<%= url_for('item_show', {id => $item->id}) %>"><%= $item->short_description %></a></td>
-                    <td><%= $item->description %></td>
-                    <td>
-                        % if (my $parent = $item->parent) {
-                            <a href="<%= url_for('item_show', {id => $parent->id}) %>"><%= $parent->short_description %></a>
-                        % } else {
-                            -
+        % if (@$item_tree) {
+            <ul style="list-style-type: none; padding-left: 0;">
+                % for my $node (@$item_tree) {
+                    % my $item = $node->{item};
+                    % my $indent = $node->{level} * 20;
+                    <li style="padding-left: <%= $indent %>px; margin-bottom: 5px;">
+                        <a href="<%= url_for('item_show', {id => $item->id}) %>"><%= $item->short_description %></a>
+                        % if ($item->description) {
+                            <span style="color: #666; font-size: 0.9em;">- <%= $item->description %></span>
                         % }
-                    </td>
-                </tr>
-            % }
-            </tbody>
-        </table>
+                    </li>
+                % }
+            </ul>
+        % } else {
+            <p>No items found.</p>
+        % }
     </div>
     <div class="panel">
         <h2>Add New Item</h2>
@@ -655,8 +747,8 @@ __DATA__
             <label for="parent_id">Parent Item (Optional):</label>
             <select name="parent_id">
                 <option value="">-- None --</option>
-                % for my $item_node (@$items) {
-                    <option value="<%= $item_node->id %>"><%= $item_node->description || $item_node->short_description %></option>
+                % for my $item_node (@$all_items) {
+                    <option value="<%= $item_node->id %>"><%= $item_node->short_description %></option>
                 % }
             </select>
             <button type="submit">Create Item</button>
@@ -693,7 +785,7 @@ __DATA__
                     % }
                 </td>
                 <td>
-                    <form action="<%= url_for('gtin_update_quantity', {id => $gtin->id}) %>" method="POST" style="box-shadow:none; padding:0; display:flex; gap:5px;">
+                    <form class="dynamic-form" action="<%= url_for('gtin_update_quantity', {id => $gtin->id}) %>" method="POST" style="box-shadow:none; padding:0; display:flex; gap:5px;">
                         <input type="number" name="quantity" value="<%= $gtin->item_quantity %>" min="1" style="width: 60px;">
                         <input type="hidden" name="redirect_to" value="<%= url_for('gtins') %>">
                         <button type="submit" style="padding: 5px 10px;">Set</button>
@@ -716,7 +808,7 @@ __DATA__
             <label for="short_description">Short Description:</label>
             <input type="text" name="short_description" value="<%= $item->short_description %>" required>
             <label for="description">Long Description (optional):</label>
-            <textarea name="description" rows="3"><%= $item->description %></textarea>
+            <input type="text" name="description" value="<%= $item->description %>">
             <label for="parent_id">Parent Item:</label>
             <select name="parent_id">
                 <option value="">-- None --</option>
@@ -747,7 +839,7 @@ __DATA__
                 <td><%= $gtin->gtin %></td>
                 <td><img src="<%= url_for('barcode_image', {code => $gtin->gtin}) %>" alt="Barcode for <%= $gtin->gtin %>" height="100"></td>
                 <td>
-                    <form action="<%= url_for('gtin_update_quantity', {id => $gtin->id}) %>" method="POST" style="box-shadow:none; padding:0; display:flex; flex-direction: column; gap:5px;">
+                    <form class="dynamic-form" action="<%= url_for('gtin_update_quantity', {id => $gtin->id}) %>" method="POST" style="box-shadow:none; padding:0; display:flex; flex-direction: column; gap:5px;">
                         <input type="number" name="quantity" value="<%= $gtin->item_quantity %>" min="1" style="width: 100%; box-sizing: border-box;">
                         <input type="hidden" name="redirect_to" value="<%= url_for('item_show', {id => $item->id}) %>">
                         <button type="submit" style="padding: 5px 10px;">Set</button>
@@ -778,8 +870,15 @@ __DATA__
             </thead>
             % for my $loc (@$locations) {
             <tr>
-                <td><%= $loc->get_column('location_name') %></td>
-                <td><%= $loc->get_column('count') %></td>
+                <td><%= $loc->get_column('location_name') || 'Unknown' %></td>
+                <td>
+                    <form class="dynamic-form" action="<%= url_for('inventory_set_quantity') %>" method="POST" style="box-shadow:none; padding:0; display:flex; gap:5px;">
+                        <input type="hidden" name="item_id" value="<%= $item->id %>">
+                        <input type="hidden" name="location_id" value="<%= $loc->get_column('location_id') %>">
+                        <input type="number" name="quantity" value="<%= $loc->get_column('count') %>" min="0" style="width: 100%; box-sizing: border-box;">
+                        <button type="submit" style="padding: 5px 10px;">Set</button>
+                    </form>
+                </td>
             </tr>
             % }
         </table>
@@ -788,8 +887,10 @@ __DATA__
             <input type="hidden" name="item_id" value="<%= $item->id %>">
             <label for="location_id">Location:</label>
             <select name="location_id">
-                % for my $loc (@$all_locations) {
-                <option value="<%= $loc->id %>"><%= $loc->full_name %></option>
+                % for my $node (@$all_locations_list) {
+                    % my $loc = $node->{location};
+                    % my $indent = '&nbsp;&nbsp;' x $node->{level};
+                    <option value="<%= $loc->id %>"><%= Mojo::ByteStream->new($indent) %><%= $loc->full_name %></option>
                 % }
             </select>
             <div style="display: flex; gap: 1rem;">
@@ -858,7 +959,7 @@ __DATA__
                     <tr>
                         <td><a href="<%= url_for('item_show', {id => $item->get_column('item_id')}) %>"><%= $item->get_column('short_description') %></a></td>
                         <td>
-                            <form action="<%= url_for('inventory_set_quantity') %>" method="POST" style="box-shadow:none; padding:0; display:flex; gap:5px;">
+                            <form class="dynamic-form" action="<%= url_for('inventory_set_quantity') %>" method="POST" style="box-shadow:none; padding:0; display:flex; gap:5px;">
                                 <input type="hidden" name="item_id" value="<%= $item->get_column('item_id') %>">
                                 <input type="hidden" name="location_id" value="<%= $location->id %>">
                                 <input type="number" name="quantity" value="<%= $item->get_column('count') %>" min="0" style="width: 100%; box-sizing: border-box;">

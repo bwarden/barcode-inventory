@@ -158,6 +158,7 @@ foreach my $item ($empty_items->all) {
 
       if ($desc) {
         # Store the new data
+        $desc = '_' . $desc; # prepend underscore to make it clear it was auto-generated
         print "Updating item ", $item->id, " to ", $desc, "\n";
         $item->update(
           {

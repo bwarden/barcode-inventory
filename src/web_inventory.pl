@@ -187,6 +187,8 @@ get('/item/:id' => sub ($c) {
     my $item = $c->app->schema->resultset('Item')->find($id, {
         prefetch => ['gtins', 'parent', 'category']
     });
+    # Prefetch tags for the item
+    $item = $c->app->schema->resultset('Item')->find($id, { prefetch => { 'item_tags' => 'tag' } });
     unless ($item) {
         $c->flash(error => "Item with ID '$id' was not found.");
         return $c->redirect_to('items');
@@ -251,12 +253,16 @@ get('/item/:id' => sub ($c) {
     };
     my @all_locations_list = $build_loc_tree->(0, 0);
 
+    # Get all tags for the dropdown
+    my $all_tags = [ $c->app->schema->resultset('Tag')->search({}, { order_by => 'tag' })->all ];
+
     $c->render(
         template => 'item',
         item => $item,
         locations => [ $locations_rs->all ],
         parent_item_list => \@parent_item_list,
-        all_locations_list => \@all_locations_list
+        all_locations_list => \@all_locations_list,
+        all_tags => $all_tags,
     );
 })->name('item_show');
 
@@ -301,6 +307,7 @@ post '/item/:id/delete' => sub ($c) {
     $c->app->schema->txn_do(sub {
         $item->inventories->delete_all;
         $item->gtins->delete_all;
+        $item->item_tags->delete_all;
         # Add other dependencies here (item_tags, etc.)
         $item->delete;
     });
@@ -337,6 +344,63 @@ post '/gtin/:id/delete' => sub ($c) {
     $gtin->delete;
 
     $c->flash(message => "GTIN deleted.");
+    $c->redirect_to('/item/' . $item_id);
+};
+
+# --- Item-Tag Management ---
+
+# POST /item/:id/add_tag
+post '/item/:id/add_tag' => sub ($c) {
+    my $item_id = $c->param('id');
+    my $tag_id = $c->param('tag_id');
+
+    my $item = $c->app->schema->resultset('Item')->find($item_id);
+    my $tag = $c->app->schema->resultset('Tag')->find($tag_id);
+    return $c->reply->not_found unless $item && $tag;
+
+    eval {
+        $item->find_or_create_related('item_tags', { tag_id => $tag_id });
+        $c->flash(message => "Tag '" . $tag->tag . "' added to item.");
+    };
+    if ($@) {
+        $c->flash(error => "Failed to add tag: $@");
+    }
+
+    $c->redirect_to('/item/' . $item_id);
+};
+
+# POST /item_tag/:id/delete
+post '/item_tag/:id/delete' => sub ($c) {
+    my $item_tag_id = $c->param('id');
+    my $item_tag = $c->app->schema->resultset('ItemTag')->find($item_tag_id);
+    return $c->reply->not_found unless $item_tag;
+
+    my $item_id = $item_tag->item_id;
+    $item_tag->delete;
+
+    $c->flash(message => "Tag removed from item.");
+    $c->redirect_to('/item/' . $item_id);
+};
+
+# --- Item-Pattern Management ---
+
+# POST /item/:id/add_pattern
+post '/item/:id/add_pattern' => sub ($c) {
+    my $item_id = $c->param('id');
+    my $item = $c->app->schema->resultset('Item')->find($item_id);
+    return $c->reply->not_found unless $item;
+
+    eval {
+        $item->create_related('patterns', {
+            lower   => $c->param('lower'),
+            upper   => $c->param('upper'),
+            comment => $c->param('comment'),
+        });
+        $c->flash(message => "Pattern added.");
+    };
+    if ($@) {
+        $c->flash(error => "Failed to add pattern: $@");
+    }
     $c->redirect_to('/item/' . $item_id);
 };
 
@@ -451,6 +515,194 @@ get('/barcode/*code' => sub ($c) {
 
     $c->render(data => $svg_data, format => 'svg');
 })->name('barcode_image');
+
+# --- Tag Management ---
+
+# GET /tags
+get('/tags' => sub ($c) {
+    my $tags_rs = $c->app->schema->resultset('Tag')->search({}, { order_by => 'tag' });
+    $c->render(template => 'tags', tags => [ $tags_rs->all ]);
+})->name('tags');
+
+# POST /tag/create
+post('/tag/create' => sub ($c) {
+    my $tag_name = $c->param('tag');
+    return $c->redirect_to('tags') unless $tag_name;
+
+    eval {
+        $c->app->schema->resultset('Tag')->create({ tag => $tag_name });
+        $c->flash(message => "Tag '$tag_name' created.");
+    };
+    if ($@) {
+        $c->flash(error => "Could not create tag. It may already exist. ($@)");
+    }
+    $c->redirect_to('tags');
+})->name('tag_create');
+
+# POST /tag/:id/delete
+post('/tag/:id/delete' => sub ($c) {
+    my $id = $c->param('id');
+    my $tag = $c->app->schema->resultset('Tag')->find($id);
+    return $c->reply->not_found unless $tag;
+
+    my $tag_name = $tag->tag;
+    $tag->delete; # Cascades to item_tags
+
+    $c->flash(message => "Tag '$tag_name' and all its associations have been deleted.");
+    $c->redirect_to('tags');
+})->name('tag_delete');
+
+# GET /tag/:id/edit
+get('/tag/:id/edit' => sub ($c) {
+    my $id = $c->param('id');
+    my $tag = $c->app->schema->resultset('Tag')->find($id);
+    return $c->reply->not_found unless $tag;
+    $c->render(template => 'tag_edit', tag => $tag);
+})->name('tag_edit');
+
+# POST /tag/:id/update
+post('/tag/:id/update' => sub ($c) {
+    my $id = $c->param('id');
+    my $tag = $c->app->schema->resultset('Tag')->find($id);
+    return $c->reply->not_found unless $tag;
+
+    my $new_name = $c->param('tag');
+    $tag->update({ tag => $new_name });
+
+    $c->flash(message => "Tag updated to '$new_name'.");
+    $c->redirect_to('tags');
+})->name('tag_update');
+
+# --- Pattern Management ---
+
+# GET /patterns
+get('/patterns' => sub ($c) {
+    my $patterns_rs = $c->app->schema->resultset('Pattern')->search(
+        {},
+        {
+            order_by => { -asc => ['lower', 'upper'] },
+            prefetch => 'item'
+        }
+    );
+
+    # Build a hierarchical list of all items for the dropdown
+    my %items_for_dropdown;
+    my %children_of_for_dropdown;
+    my $all_items_list = [ $c->app->schema->resultset('Item')->search({}, { prefetch => ['items', 'gtins'] })->all ];
+    for my $i (@$all_items_list) {
+        $items_for_dropdown{$i->id} = $i;
+        push @{ $children_of_for_dropdown{$i->parent_id || 0} }, $i->id;
+    }
+    my $build_item_tree;
+    $build_item_tree = sub {
+        my ($parent_id, $level) = @_;
+        my @nodes;
+        return unless exists $children_of_for_dropdown{$parent_id};
+        for my $item_id (sort { lc($items_for_dropdown{$a}->short_description) cmp lc($items_for_dropdown{$b}->short_description) } @{$children_of_for_dropdown{$parent_id}}) {
+            my $item_node = $items_for_dropdown{$item_id};
+            my $is_parent = $item_node->items->count > 0 || $item_node->gtins->count == 0;
+            push @nodes, { item => $item_node, level => $level, is_parent => $is_parent };
+            push @nodes, $build_item_tree->($item_id, $level + 1);
+        }
+        return @nodes;
+    };
+    my @all_items_tree = $build_item_tree->(0, 0);
+
+    $c->render(
+        template => 'patterns',
+        patterns => [ $patterns_rs->all ],
+        all_items_tree => \@all_items_tree
+    );
+})->name('patterns');
+
+# POST /pattern/create
+post('/pattern/create' => sub ($c) {
+    eval {
+        # Ensure item_id is undef if an empty string is passed
+        my $item_id = $c->param('item_id');
+        $item_id = undef if defined $item_id && $item_id eq '';
+
+        $c->app->schema->resultset('Pattern')->create({
+            lower   => $c->param('lower'),
+            upper   => $c->param('upper'),
+            comment => $c->param('comment'),
+            item_id => $c->param('item_id') || undef,
+        });
+        $c->flash(message => "Pattern created.");
+    };
+    if ($@) {
+        $c->flash(error => "Failed to create pattern: $@");
+    }
+    $c->redirect_to('patterns');
+})->name('pattern_create');
+
+# GET /pattern/:id/edit
+get('/pattern/:id/edit' => sub ($c) {
+    my $id = $c->param('id');
+    my $pattern = $c->app->schema->resultset('Pattern')->find($id);
+    return $c->reply->not_found unless $pattern;
+
+    # Build a hierarchical list of all items for the dropdown
+    my %items_for_dropdown;
+    my %children_of_for_dropdown;
+    my $all_items_list = [ $c->app->schema->resultset('Item')->search({}, { prefetch => ['items', 'gtins'] })->all ];
+    for my $i (@$all_items_list) {
+        $items_for_dropdown{$i->id} = $i;
+        push @{ $children_of_for_dropdown{$i->parent_id || 0} }, $i->id;
+    }
+    my $build_item_tree;
+    $build_item_tree = sub {
+        my ($parent_id, $level) = @_;
+        my @nodes;
+        return unless exists $children_of_for_dropdown{$parent_id};
+        for my $item_id (sort { lc($items_for_dropdown{$a}->short_description) cmp lc($items_for_dropdown{$b}->short_description) } @{$children_of_for_dropdown{$parent_id}}) {
+            my $item_node = $items_for_dropdown{$item_id};
+            my $is_parent = $item_node->items->count > 0 || $item_node->gtins->count == 0;
+            push @nodes, { item => $item_node, level => $level, is_parent => $is_parent };
+            push @nodes, $build_item_tree->($item_id, $level + 1);
+        }
+        return @nodes;
+    };
+    my @all_items_tree = $build_item_tree->(0, 0);
+
+    $c->render(
+        template => 'pattern_edit',
+        pattern => $pattern,
+        all_items_tree => \@all_items_tree
+    );
+})->name('pattern_edit');
+
+
+# POST /pattern/:id/update
+post('/pattern/:id/update' => sub ($c) {
+    my $id = $c->param('id');
+    my $pattern = $c->app->schema->resultset('Pattern')->find($id);
+    return $c->reply->not_found unless $pattern;
+
+    eval {
+        $pattern->update({
+            lower   => $c->param('lower'),
+            upper   => $c->param('upper'),
+            comment => $c->param('comment'),
+            item_id => $c->param('item_id') || undef,
+        });
+        $c->flash(message => "Pattern updated.");
+    };
+    if ($@) {
+        $c->flash(error => "Failed to update pattern: $@");
+    }
+    $c->redirect_to('patterns');
+})->name('pattern_update');
+
+# POST /pattern/:id/delete
+post('/pattern/:id/delete' => sub ($c) {
+    my $id = $c->param('id');
+    my $pattern = $c->app->schema->resultset('Pattern')->find($id);
+    return $c->reply->not_found unless $pattern;
+    $pattern->delete;
+    $c->flash(message => "Pattern deleted.");
+    $c->redirect_to($c->param('redirect_to') || $c->url_for('patterns'));
+})->name('pattern_delete');
 
 # --- Location & Inventory Management ---
 
@@ -672,6 +924,8 @@ __DATA__
         <a href="<%= url_for('items') %>">Items</a>
         <a href="<%= url_for('gtins') %>">Barcodes</a>
         <a href="<%= url_for('locations') %>">Locations</a>
+        <a href="<%= url_for('tags') %>">Tags</a>
+        <a href="<%= url_for('patterns') %>">Patterns</a>
     </nav>
     <div class="container">
         % if (my $msg = flash('message')) {
@@ -988,6 +1242,35 @@ __DATA__
             </div>
         </form>
     </div>
+
+    <div class="panel">
+        <h2>Item Tags</h2>
+        % if ($item->item_tags->count) {
+            <ul style="list-style-type: none; padding: 0; display: flex; flex-wrap: wrap; gap: 10px;">
+            % for my $item_tag ($item->item_tags) {
+                <li style="background: #eee; padding: 5px 10px; border-radius: 15px; display: flex; align-items: center; gap: 5px;">
+                    <span><%= $item_tag->tag->tag %></span>
+                    <form action="<%= url_for('/item_tag/' . $item_tag->id . '/delete') %>" method="POST" style="padding:0; box-shadow:none; margin:0;">
+                        <button type="submit" class="delete" style="padding: 0; width: 20px; height: 20px; line-height: 20px; border-radius: 50%; font-size: 12px;">X</button>
+                    </form>
+                </li>
+            % }
+            </ul>
+        % } else {
+            <p>No tags associated with this item.</p>
+        % }
+        <h3>Add Tag</h3>
+        <form action="<%= url_for('/item/' . $item->id . '/add_tag') %>" method="POST">
+            <select name="tag_id" required>
+                <option value="">-- Select a Tag --</option>
+                % for my $tag (@$all_tags) {
+                    <option value="<%= $tag->id %>"><%= $tag->tag %></option>
+                % }
+            </select>
+            <button type="submit">Add Tag</button>
+        </form>
+    </div>
+
 </div>
 @@ locations.html.ep
 % layout 'layout';
@@ -1033,6 +1316,160 @@ __DATA__
             <button type="submit">Create Location</button>
         </form>
     </div>
+</div>
+
+@@ tags.html.ep
+% layout 'layout';
+<h1>Tags</h1>
+
+<div class="grid">
+    <div class="panel">
+        <h2>All Tags</h2>
+        % if (@$tags) {
+            <table>
+                <thead><tr><th>Tag</th><th>Action</th></tr></thead>
+                <tbody>
+                % for my $tag (@$tags) {
+                    <tr>
+                        <td><%= $tag->tag %></td>
+                        <td>
+                            <div style="display: flex; gap: 5px;">
+                                <a href="<%= url_for('tag_edit', {id => $tag->id}) %>" style="text-decoration: none;"><button style="padding: 5px 10px;">Edit</button></a>
+                                <form action="<%= url_for('tag_delete', {id => $tag->id}) %>" method="POST" style="padding:0; box-shadow:none; margin:0;"><button type="submit" class="delete" style="padding: 5px 10px;">Delete</button></form>
+                            </div>
+                        </td>
+                    </tr>
+                % }
+                </tbody>
+            </table>
+        % } else {
+            <p>No tags found. Create one!</p>
+        % }
+    </div>
+    <div class="panel">
+        <h2>Add New Tag</h2>
+        <form action="<%= url_for('tag_create') %>" method="POST">
+            <label for="tag">Tag Name:</label>
+            <input type="text" name="tag" required>
+            <button type="submit">Create Tag</button>
+        </form>
+    </div>
+</div>
+
+@@ tag_edit.html.ep
+% layout 'layout';
+<h1>Edit Tag</h1>
+
+<div class="panel">
+    <form action="<%= url_for('tag_update', {id => $tag->id}) %>" method="POST">
+        <label for="tag">Tag Name:</label>
+        <input type="text" name="tag" value="<%= $tag->tag %>" required>
+        <button type="submit">Update Tag</button>
+    </form>
+</div>
+
+
+@@ patterns.html.ep
+% layout 'layout';
+<h1>Barcode Patterns</h1>
+
+<div class="grid">
+    <div class="panel">
+        <h2>All Patterns</h2>
+        % if (@$patterns) {
+            <table>
+                <thead>
+                    <tr>
+                        <th>Lower Bound</th>
+                        <th>Upper Bound</th>
+                        <th>Linked Item</th>
+                        <th>Comment</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                % for my $p (@$patterns) {
+                    <tr>
+                        <td><%= $p->lower %></td>
+                        <td><%= $p->upper %></td>
+                        <td>
+                            % if (my $item = $p->item) {
+                                <a href="<%= url_for('item_show', {id => $item->id}) %>"><%= $item->short_description %></a>
+                            % } else {
+                                <span style="color: #999;">(None)</span>
+                            % }
+                        </td>
+                        <td><%= $p->comment %></td>
+                        <td style="display: flex; gap: 5px;">
+                            <a href="<%= url_for('pattern_edit', {id => $p->id}) %>" style="text-decoration: none;"><button style="padding: 5px 10px;">Edit</button></a>
+                            <form action="<%= url_for('pattern_delete', {id => $p->id}) %>" method="POST" style="padding:0; box-shadow:none; margin:0;">
+                                <button type="submit" class="delete" style="padding: 5px 10px;">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                % }
+                </tbody>
+            </table>
+        % } else {
+            <p>No patterns defined.</p>
+        % }
+    </div>
+    <div class="panel">
+        <h2>Add New Pattern</h2>
+        <form action="<%= url_for('pattern_create') %>" method="POST">
+            <label for="lower">Lower Bound:</label>
+            <input type="number" name="lower" required>
+
+            <label for="upper">Upper Bound:</label>
+            <input type="number" name="upper" required>
+
+            <label for="comment">Comment (optional):</label>
+            <input type="text" name="comment">
+
+            <label for="item_id">Linked Item (optional):</label>
+            <select name="item_id">
+                <option value="">-- None (Discard Barcode) --</option>
+                % for my $node (@$all_items_tree) {
+                    % my $item = $node->{item};
+                    % my $indent = '&nbsp;&nbsp;' x $node->{level};
+                    % my $style = $node->{is_parent} ? 'font-weight: bold;' : '';
+                    <option value="<%= $item->id %>" style="<%= $style %>"><%= Mojo::ByteStream->new($indent) %><%= $item->short_description %></option>
+                % }
+            </select>
+
+            <button type="submit">Create Pattern</button>
+        </form>
+    </div>
+</div>
+
+@@ pattern_edit.html.ep
+% layout 'layout';
+<h1>Edit Pattern</h1>
+
+<div class="panel">
+    <form action="<%= url_for('pattern_update', {id => $pattern->id}) %>" method="POST">
+        <label for="lower">Lower Bound:</label>
+        <input type="number" name="lower" value="<%= $pattern->lower %>" required>
+
+        <label for="upper">Upper Bound:</label>
+        <input type="number" name="upper" value="<%= $pattern->upper %>" required>
+
+        <label for="comment">Comment (optional):</label>
+        <input type="text" name="comment" value="<%= $pattern->comment %>">
+
+        <label for="item_id">Linked Item (optional):</label>
+        <select name="item_id">
+            <option value="">-- None (Discard Barcode) --</option>
+            % for my $node (@$all_items_tree) {
+                % my $item = $node->{item};
+                % my $indent = '&nbsp;&nbsp;' x $node->{level};
+                % my $style = $node->{is_parent} ? 'font-weight: bold;' : '';
+                <option value="<%= $item->id %>" <%= ($pattern->item_id && $pattern->item_id == $item->id) ? 'selected' : '' %> style="<%= $style %>"><%= Mojo::ByteStream->new($indent) %><%= $item->short_description %></option>
+            % }
+        </select>
+
+        <button type="submit">Update Pattern</button>
+    </form>
 </div>
 
 @@ location.html.ep

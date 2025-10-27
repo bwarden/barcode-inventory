@@ -70,7 +70,7 @@ get '/' => sub ($c) {
     # 2. Build a tree of all items
     my %items;
     my %children_of;
-    my $all_items = [ $c->app->schema->resultset('Item')->all ];
+    my $all_items = [ $c->app->schema->resultset('Item')->search({}, { prefetch => ['items', 'gtins'] })->all ];
     for my $item (@$all_items) {
         $items{$item->id} = $item;
         push @{ $children_of{$item->parent_id || 0} }, $item->id;
@@ -101,7 +101,10 @@ get '/' => sub ($c) {
                 $locations_str = join(', ', sort keys %{ $item_locations{$id} });
             }
 
-            push @nodes, { item => $item, direct_count => $direct_count, total_count => $total_count, children => \@child_nodes, locations => $locations_str };
+            # An item is a "parent" if it has children or no GTINs of its own.
+            my $is_parent = $item->items->count > 0 || $item->gtins->count == 0;
+
+            push @nodes, { item => $item, direct_count => $direct_count, total_count => $total_count, children => \@child_nodes, locations => $locations_str, is_parent => $is_parent };
         }
         return @nodes;
     };
@@ -112,7 +115,7 @@ get '/' => sub ($c) {
         {},
         {
             order_by => { -desc => 'date_added' },
-            rows => 10
+            rows => 50
         }
     );
 
@@ -130,7 +133,7 @@ get('/items' => sub ($c) {
     # Build a hierarchical list of all items
     my %items;
     my %children_of;
-    my $all_items_list = [ $c->app->schema->resultset('Item')->search({}, { prefetch => 'parent' })->all ];
+    my $all_items_list = [ $c->app->schema->resultset('Item')->search({}, { prefetch => ['parent', 'items', 'gtins'] })->all ];
     for my $item (@$all_items_list) {
         $items{$item->id} = $item;
         push @{ $children_of{$item->parent_id || 0} }, $item->id;
@@ -144,16 +147,38 @@ get('/items' => sub ($c) {
 
         for my $item_id (sort { lc($items{$a}->short_description) cmp lc($items{$b}->short_description) } @{$children_of{$parent_id}}) {
             my $item_node = $items{$item_id};
-            push @nodes, { item => $item_node, level => $level };
+            # An item is a "parent" if it has children or no GTINs of its own.
+            my $is_parent = $item_node->items->count > 0 || $item_node->gtins->count == 0;
+            push @nodes, { item => $item_node, level => $level, is_parent => $is_parent };
             push @nodes, $build_item_tree->($item_id, $level + 1);
         }
         return @nodes;
     };
     my @item_tree = $build_item_tree->(0, 0);
 
-    my $all_items_for_dropdown = [ $c->app->schema->resultset('Item')->search({}, { order_by => 'short_description' })->all ];
+    # Build a hierarchical list of parent items for the dropdown
+    my %parent_items_for_dropdown;
+    my %parent_children_of;
+    for my $item (@$all_items_list) {
+        next unless ($item->items->count > 0 || $item->gtins->count == 0);
+        $parent_items_for_dropdown{$item->id} = $item;
+        push @{ $parent_children_of{$item->parent_id || 0} }, $item->id;
+    }
+    my $build_parent_tree;
+    $build_parent_tree = sub {
+        my ($parent_id, $level) = @_;
+        my @nodes;
+        return unless exists $parent_children_of{$parent_id};
+        for my $item_id (sort { lc($parent_items_for_dropdown{$a}->short_description) cmp lc($parent_items_for_dropdown{$b}->short_description) } @{$parent_children_of{$parent_id}}) {
+            my $item_node = $parent_items_for_dropdown{$item_id};
+            push @nodes, { item => $item_node, level => $level, is_parent => 1 }; # It's a parent by definition
+            push @nodes, $build_parent_tree->($item_id, $level + 1);
+        }
+        return @nodes;
+    };
+    my @parent_item_list = $build_parent_tree->(0, 0);
 
-    $c->render(template => 'items', item_tree => \@item_tree, all_items => $all_items_for_dropdown);
+    $c->render(template => 'items', item_tree => \@item_tree, parent_item_list => \@parent_item_list);
 })->name('items');
 
 # GET /item/:id
@@ -181,7 +206,7 @@ get('/item/:id' => sub ($c) {
     # Build a hierarchical list of possible parent items for the dropdown
     my %items_for_dropdown;
     my %children_of_for_dropdown;
-    my $possible_parents = [ $c->app->schema->resultset('Item')->search({ id => { '!=' => $id } })->all ];
+    my $possible_parents = [ $c->app->schema->resultset('Item')->search({ 'me.id' => { '!=' => $id } }, { prefetch => ['items', 'gtins'] })->all ];
     for my $i (@$possible_parents) {
         $items_for_dropdown{$i->id} = $i;
         push @{ $children_of_for_dropdown{$i->parent_id || 0} }, $i->id;
@@ -195,7 +220,9 @@ get('/item/:id' => sub ($c) {
 
         for my $item_id (sort { lc($items_for_dropdown{$a}->short_description) cmp lc($items_for_dropdown{$b}->short_description) } @{$children_of_for_dropdown{$parent_id}}) {
             my $item_node = $items_for_dropdown{$item_id};
-            push @nodes, { item => $item_node, level => $level };
+            # An item is a "parent" if it has children or no GTINs of its own.
+            my $is_parent = $item_node->items->count > 0 || $item_node->gtins->count == 0;
+            push @nodes, { item => $item_node, level => $level, is_parent => $is_parent };
             push @nodes, $build_parent_tree->($item_id, $level + 1);
         }
         return @nodes;
@@ -429,7 +456,7 @@ get('/barcode/*code' => sub ($c) {
 
 # GET /locations
 get('/locations' => sub ($c) {
-    my $locations_rs = $c->app->schema->resultset('Location')->search({}, { order_by => 'short_name' });
+    my $locations_rs = $c->app->schema->resultset('Location')->search({}, { order_by => 'full_name' });
     # Pass an array to the template
     $c->render(template => 'locations', locations => [ $locations_rs->all ]);
 })->name('locations');
@@ -501,8 +528,8 @@ post('/inventory/set_quantity' => sub ($c) {
 
         # Add the new quantity
         $c->app->schema->resultset('Inventory')->populate([
-            { item_id => $item_id, location_id => $location_id }
-        ] x $quantity) if $quantity > 0;
+            ({ item_id => $item_id, location_id => $location_id })
+        x $quantity]) if $quantity > 0;
     });
 
     $c->flash(message => "Quantity for '".$item->short_description."' in '".$loc->short_name."' set to $quantity.");
@@ -519,27 +546,80 @@ get('/location/:id' => sub ($c) {
     my $location = $c->app->schema->resultset('Location')->find($id);
     return $c->reply->not_found unless $location;
 
-    my $items_in_location = $c->app->schema->resultset('Inventory')->search(
+    # 1. Get direct counts for all items in THIS location
+    my %item_counts;
+    my $counts_rs = $c->app->schema->resultset('Inventory')->search(
         { location_id => $id },
         {
-            select   => [ 'item.id', 'item.short_description', { count => 'item_id' } ],
-            as       => [qw/item_id short_description count/],
-            join     => 'item',
-            group_by => [ 'item.id', 'item.short_description' ],
-            order_by => { -asc => 'item.short_description' }
+            select   => [ 'item_id', { count => 'item_id' } ],
+            as       => [qw/item_id count/],
+            group_by => 'item_id'
         }
     );
+    while (my $row = $counts_rs->next) {
+        $item_counts{$row->get_column('item_id')} = $row->get_column('count');
+    }
 
-    my $all_items_rs = $c->app->schema->resultset('Item')->search(
-        {},
-        { order_by => { -asc => 'me.short_description' } }
-    );
+    # 2. Build a tree of ALL items in the database, just like the dashboard
+    my %items;
+    my %children_of;
+    my $all_items = [ $c->app->schema->resultset('Item')->search({}, { prefetch => ['items', 'gtins'] })->all ];
+    for my $item (@$all_items) {
+        $items{$item->id} = $item;
+        push @{ $children_of{$item->parent_id || 0} }, $item->id;
+    }
+
+    # 3. Recursively build the display tree, pruning branches with no inventory in this location
+    my $build_items_in_loc_tree;
+    $build_items_in_loc_tree = sub {
+        my ($parent_id, $level) = @_;
+        my @nodes;
+        return unless exists $children_of{$parent_id};
+        for my $item_id (sort { lc($items{$a}->short_description) cmp lc($items{$b}->short_description) } @{$children_of{$parent_id}}) {
+            my $item_node = $items{$item_id};
+            my $direct_count = $item_counts{$item_id} || 0;
+            my @child_nodes = $build_items_in_loc_tree->($item_id, $level + 1);
+
+            my $total_count_in_loc = $direct_count;
+            $total_count_in_loc += $_->{total_count} for @child_nodes;
+
+            next if $total_count_in_loc == 0;
+
+            my $is_parent = $item_node->items->count > 0 || $item_node->gtins->count == 0;
+            push @nodes, { item => $item_node, level => $level, is_parent => $is_parent, count => $direct_count, total_count => $total_count_in_loc, children => \@child_nodes };
+        }
+        return @nodes;
+    };
+    my @items_in_location_tree = $build_items_in_loc_tree->(0, 0);
+
+    # Build a hierarchical list of all items for the dropdown
+    my %items_for_dropdown;
+    my %children_of_for_dropdown;
+    my $all_items_list = [ $c->app->schema->resultset('Item')->search({}, { prefetch => ['items', 'gtins'] })->all ];
+    for my $i (@$all_items_list) {
+        $items_for_dropdown{$i->id} = $i;
+        push @{ $children_of_for_dropdown{$i->parent_id || 0} }, $i->id;
+    }
+    my $build_item_tree;
+    $build_item_tree = sub {
+        my ($parent_id, $level) = @_;
+        my @nodes;
+        return unless exists $children_of_for_dropdown{$parent_id};
+        for my $item_id (sort { lc($items_for_dropdown{$a}->short_description) cmp lc($items_for_dropdown{$b}->short_description) } @{$children_of_for_dropdown{$parent_id}}) {
+            my $item_node = $items_for_dropdown{$item_id};
+            my $is_parent = $item_node->items->count > 0 || $item_node->gtins->count == 0;
+            push @nodes, { item => $item_node, level => $level, is_parent => $is_parent };
+            push @nodes, $build_item_tree->($item_id, $level + 1);
+        }
+        return @nodes;
+    };
+    my @all_items_tree = $build_item_tree->(0, 0);
 
     $c->render(
         template => 'location',
         location => $location,
-        items_in_location => [ $items_in_location->all ],
-        all_items => [ $all_items_rs->all ]
+        items_in_location_tree => \@items_in_location_tree,
+        all_items_tree         => \@all_items_tree
     );
 })->name('location_show');
 
@@ -664,8 +744,10 @@ __DATA__
             % my $render_node;
             % $render_node = begin
                 % my ($node, $level) = @_;
+                % my $style = $node->{is_parent} ? 'font-weight: bold;' : '';
                 <li style="padding-left: <%= $level * 20 %>px;">
-                    <a href="<%= url_for('item_show', {id => $node->{item}->id}) %>"><%= $node->{item}->short_description %></a>
+                    <a href="<%= url_for('item_show', {id => $node->{item}->id}) %>" style="<%= $style %>">
+                        <%= $node->{item}->short_description %></a>
                     <strong>(Total: <%= $node->{total_count} %>)</strong>
                     % if ($node->{direct_count} > 0) {
                         <span style="color: #555;">
@@ -727,8 +809,10 @@ __DATA__
                 % for my $node (@$item_tree) {
                     % my $item = $node->{item};
                     % my $indent = $node->{level} * 20;
+                    % my $style = $node->{is_parent} ? 'font-weight: bold;' : '';
                     <li style="padding-left: <%= $indent %>px; margin-bottom: 5px;">
-                        <a href="<%= url_for('item_show', {id => $item->id}) %>"><%= $item->short_description %></a>
+                        <a href="<%= url_for('item_show', {id => $item->id}) %>" style="<%= $style %>">
+                            <%= $item->short_description %></a>
                         % if ($item->description) {
                             <span style="color: #666; font-size: 0.9em;">- <%= $item->description %></span>
                         % }
@@ -747,8 +831,11 @@ __DATA__
             <label for="parent_id">Parent Item (Optional):</label>
             <select name="parent_id">
                 <option value="">-- None --</option>
-                % for my $item_node (@$all_items) {
-                    <option value="<%= $item_node->id %>"><%= $item_node->short_description %></option>
+                % for my $node (@$parent_item_list) {
+                    % my $p_item = $node->{item};
+                    % my $indent = '&nbsp;&nbsp;' x $node->{level};
+                    % my $style = 'font-weight: bold;';
+                    <option value="<%= $p_item->id %>" style="<%= $style %>"><%= Mojo::ByteStream->new($indent) %><%= $p_item->short_description %></option>
                 % }
             </select>
             <button type="submit">Create Item</button>
@@ -767,7 +854,7 @@ __DATA__
                 <th>GTIN</th>
                 <th>Barcode</th>
                 <th>Linked Item</th>
-                <th>Quantity</th>
+                <th># per scan</th>
             </tr>
         </thead>
         <tbody>
@@ -813,9 +900,11 @@ __DATA__
             <select name="parent_id">
                 <option value="">-- None --</option>
                 % for my $node (@$parent_item_list) {
+                    % next unless $node->{is_parent};
                     % my $p_item = $node->{item};
                     % my $indent = '&nbsp;&nbsp;' x $node->{level};
-                    <option value="<%= $p_item->id %>" <%= ($item->parent_id && $item->parent_id == $p_item->id) ? 'selected' : '' %>><%= Mojo::ByteStream->new($indent) %><%= $p_item->short_description %></option>
+                    % my $style = $node->{is_parent} ? 'font-weight: bold;' : '';
+                    <option value="<%= $p_item->id %>" <%= ($item->parent_id && $item->parent_id == $p_item->id) ? 'selected' : '' %> style="<%= $style %>"><%= Mojo::ByteStream->new($indent) %><%= $p_item->short_description %></option>
                 % }
             </select>
             <button type="submit">Update Item</button>
@@ -833,7 +922,7 @@ __DATA__
                 <col style="width: 15%;">
                 <col style="width: 15%;">
             </colgroup>
-            <thead><tr><th>GTIN</th><th>Barcode</th><th>Quantity</th><th>Action</th></tr></thead>
+            <thead><tr><th>GTIN</th><th>Barcode</th><th># per scan</th><th>Action</th></tr></thead>
             % for my $gtin ($item->gtins) {
             <tr>
                 <td><%= $gtin->gtin %></td>
@@ -906,24 +995,26 @@ __DATA__
 <div class="grid">
     <div class="panel">
         <h2>All Locations</h2>
-        <table>
-            <thead><tr><th>ID</th><th>Short Name</th><th>Full Name</th><th>Actions</th><th>Codes</th></tr></thead>
+        <table style="width: 100%;">
+            <thead><tr><th style="width: 5%;">ID</th><th style="width: 40%;">Full Name</th><th style="width: 20%;">Short Name</th><th style="width: 15%;">Actions</th><th style="width: 20%;">Codes</th></tr></thead>
             <tbody>
             % for my $loc (@$locations) {
                 <tr>
                     <td><%= $loc->id %></td>
-                    <td><%= $loc->short_name %></td>
                     <td><%= $loc->full_name %></td>
+                    <td><%= $loc->short_name %></td>
                     <td>
                         <a href="<%= url_for('location_show', {id => $loc->id}) %>">View/Manage</a>
                     </td>
                     <td>
                         <div style="display: flex; gap: 1em; margin-top: 0.5em;">
-                            <div>
+                            <div style="text-align: center;">
                                 <img src="<%= url_for('barcode_image', {code => 'inventory://' . $loc->short_name . '/add'}) %>" alt="QR Code for adding to <%= $loc->short_name %>" width="100" height="100">
+                                <div>Add</div>
                             </div>
-                            <div>
+                            <div style="text-align: center;">
                                 <img src="<%= url_for('barcode_image', {code => 'inventory://' . $loc->short_name . '/remove'}) %>" alt="QR Code for removing from <%= $loc->short_name %>" width="100" height="100">
+                                <div>Remove</div>
                             </div>
                         </div>
                     </td>
@@ -951,22 +1042,42 @@ __DATA__
 <div class="grid">
     <div class="panel">
         <h2>Items in this Location</h2>
-        % if (@$items_in_location) {
+        % if (@$items_in_location_tree) {
             <table>
                 <thead><tr><th>Item</th><th style="width: 150px;">Count</th></tr></thead>
                 <tbody>
-                % for my $item (@$items_in_location) {
-                    <tr>
-                        <td><a href="<%= url_for('item_show', {id => $item->get_column('item_id')}) %>"><%= $item->get_column('short_description') %></a></td>
+                % my $render_node;
+                % $render_node = begin
+                    % my ($node) = @_;
+                    % my $item = $node->{item};
+                    % my $indent = $node->{level} * 20;
+                    % my $style = $node->{is_parent} ? 'font-weight: bold;' : '';
+                    <tr style="background-color: <%= $node->{level} % 2 ? '#f9f9f9' : 'white' %>;">
+                        <td style="padding-left: <%= $indent + 12 %>px;">
+                            <a href="<%= url_for('item_show', {id => $item->id}) %>" style="<%= $style %>"><%= $item->short_description %></a>
+                            % if ($node->{is_parent}) {
+                                <strong>(Total: <%= $node->{total_count} %>)</strong>
+                            % }
+                        </td>
                         <td>
-                            <form class="dynamic-form" action="<%= url_for('inventory_set_quantity') %>" method="POST" style="box-shadow:none; padding:0; display:flex; gap:5px;">
-                                <input type="hidden" name="item_id" value="<%= $item->get_column('item_id') %>">
-                                <input type="hidden" name="location_id" value="<%= $location->id %>">
-                                <input type="number" name="quantity" value="<%= $item->get_column('count') %>" min="0" style="width: 100%; box-sizing: border-box;">
-                                <button type="submit" style="padding: 5px 10px;">Set</button>
-                            </form>
+                            % unless ($node->{is_parent}) {
+                                <form class="dynamic-form" action="<%= url_for('inventory_set_quantity') %>" method="POST" style="box-shadow:none; padding:0; display:flex; gap:5px;">
+                                    <input type="hidden" name="item_id" value="<%= $item->id %>">
+                                    <input type="hidden" name="location_id" value="<%= $location->id %>">
+                                    <input type="number" name="quantity" value="<%= $node->{count} %>" min="0" style="width: 100%; box-sizing: border-box;">
+                                    <button type="submit" style="padding: 5px 10px;">Set</button>
+                                </form>
+                            % } else {
+                                &nbsp;
+                            % }
                         </td>
                     </tr>
+                    % for my $child_node (@{$node->{children}}) {
+                        <%= $render_node->($child_node) %>
+                    % }
+                % end
+                % for my $node (@$items_in_location_tree) {
+                    <%= $render_node->($node) %>
                 % }
                 </tbody>
             </table>
@@ -981,8 +1092,11 @@ __DATA__
             <input type="hidden" name="redirect_to" value="<%= url_for('location_show', {id => $location->id}) %>">
             <label for="item_id">Item:</label>
             <select name="item_id">
-                % for my $item_node (@$all_items) {
-                    <option value="<%= $item_node->id %>"><%= $item_node->description || $item_node->short_description %></option>
+                % for my $node (@$all_items_tree) {
+                    % my $item = $node->{item};
+                    % my $indent = '&nbsp;&nbsp;' x $node->{level};
+                    % my $style = $node->{is_parent} ? 'font-weight: bold;' : '';
+                    <option value="<%= $item->id %>" style="<%= $style %>"><%= Mojo::ByteStream->new($indent) %><%= $item->short_description %></option>
                 % }
             </select>
             <div style="display: flex; gap: 1rem;">

@@ -126,6 +126,117 @@ get '/' => sub ($c) {
     );
 };
 
+# --- Search ---
+
+# GET /search
+any('/search' => sub ($c) {
+    my $type  = $c->param('type')  || 'item';
+    my $query = $c->param('query');
+
+    my $results = {};
+    my $redirect_to;
+
+    if ($query) {
+        if ($type eq 'item') {
+            my $items_rs = $c->app->schema->resultset('Item')->search({
+                -or => [
+                    short_description => { -like => '%' . $query . '%' },
+                    description       => { -like => '%' . $query . '%' },
+                ]
+            }, { order_by => 'short_description' });
+            $results->{items} = [ $items_rs->all ];
+        }
+        elsif ($type eq 'tag') {
+            # 1. Find items with the tag
+            my $tagged_items_rs = $c->app->schema->resultset('Item')->search(
+                { 'tag.tag' => { -like => '%' . $query . '%' } },
+                { join => { 'item_tags' => 'tag' }, distinct => 1 }
+            );
+
+            # 2. Collect their IDs and all their parents' IDs
+            my %item_ids_to_show;
+            my @queue = $tagged_items_rs->all;
+            while (my $item = shift @queue) {
+                next if exists $item_ids_to_show{$item->id};
+                $item_ids_to_show{$item->id} = 1;
+                push @queue, $item->parent if $item->parent;
+            }
+
+            # 3. Build the tree from the collected items
+            my %items;
+            my %children_of;
+            my $all_items_in_tree = [ $c->app->schema->resultset('Item')->search({ 'me.id' => [ keys %item_ids_to_show ] }, { prefetch => ['items', 'gtins'] })->all ];
+            for my $item (@$all_items_in_tree) {
+                $items{$item->id} = $item;
+                push @{ $children_of{$item->parent_id || 0} }, $item->id;
+            }
+
+            my $build_item_tree;
+            $build_item_tree = sub {
+                my ($parent_id, $level) = @_;
+                my @nodes;
+                return unless exists $children_of{$parent_id};
+
+                for my $item_id (sort { lc($items{$a}->short_description) cmp lc($items{$b}->short_description) } @{$children_of{$parent_id}}) {
+                    my $item_node = $items{$item_id};
+                    my $is_parent = $item_node->items->count > 0 || $item_node->gtins->count == 0;
+                    push @nodes, { item => $item_node, level => $level, is_parent => $is_parent };
+                    push @nodes, $build_item_tree->($item_id, $level + 1);
+                }
+                return @nodes;
+            };
+            $results->{item_tree} = [ $build_item_tree->(0, 0) ];
+        }
+        elsif ($type eq 'barcode') {
+            # Sanitize input to only be digits and strip leading zeros
+            (my $sanitized_query = $query) =~ s/\D//g;
+            $sanitized_query =~ s/^0+//;
+
+            if ($sanitized_query) {
+                my @matching_items;
+                my %seen_items; # Avoid duplicate items in results
+
+                my $gtins_rs = $c->app->schema->resultset('Gtin')->search(
+                    # The scalar reference \ is critical to tell DBIC to treat this as a single, literal condition
+                    \['CAST(me.gtin AS text) LIKE ?', $sanitized_query . '%'],
+                    { prefetch => 'item' }
+                );
+
+                # Add debugging to see the generated query
+                my ($sql, @bind) = $gtins_rs->as_query;
+                $c->app->log->debug("Barcode search SQL: $sql");
+                $c->app->log->debug("Barcode search BIND: " . join(', ', @bind));
+
+                while (my $gtin = $gtins_rs->next) {
+                    if (my $item = $gtin->item) {
+                        # Only add item to results once
+                        next if $seen_items{$item->id}++;
+                        push @matching_items, $item;
+                    }
+                }
+                $results->{items} = [ @matching_items ];
+                # No redirect, display all matching items
+                $results->{not_found} = "No items found for barcode starting with '$sanitized_query'." unless @matching_items;
+            } else {
+                $results->{not_found} = "Invalid barcode provided. Please use numbers only.";
+            }
+        }
+        elsif ($type eq 'location') {
+            my $locations_rs = $c->app->schema->resultset('Location')->search({
+                -or => [
+                    short_name => { -like => '%' . $query . '%' },
+                    full_name  => { -like => '%' . $query . '%' },
+                ]
+            }, { order_by => 'full_name' });
+            $results->{locations} = [ $locations_rs->all ];
+        }
+    }
+
+    return $c->redirect_to($redirect_to) if $redirect_to;
+
+    $c->render(template => 'search', search_type => $type, query => $query, results => $results);
+})->name('search');
+
 # --- Item Management ---
 
 # GET /items
@@ -920,6 +1031,7 @@ __DATA__
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <body>
     <nav>
+        <a href="<%= url_for('search') %>">Search</a>
         <a href="<%= url_for('/') %>">Dashboard</a>
         <a href="<%= url_for('items') %>">Items</a>
         <a href="<%= url_for('gtins') %>">Barcodes</a>
@@ -1096,6 +1208,79 @@ __DATA__
         </form>
     </div>
 </div>
+
+@@ search.html.ep
+% layout 'layout';
+<h1>Search</h1>
+
+<div class="panel">
+    <form action="<%= url_for('search') %>" method="GET">
+        <div style="display: flex; gap: 1rem; align-items: flex-end;">
+            <div style="flex-grow: 1;">
+                <label for="query">Search For:</label>
+                <input type="search" id="query" name="query" value="<%= $query %>" placeholder="Enter search term..." required>
+            </div>
+            <div>
+                <label for="type">Search In:</label>
+                <select id="type" name="type">
+                    <option value="item" <%= $search_type eq 'item' ? 'selected' : '' %>>Item Name/Desc</option>
+                    <option value="tag" <%= $search_type eq 'tag' ? 'selected' : '' %>>Tags</option>
+                    <option value="barcode" <%= $search_type eq 'barcode' ? 'selected' : '' %>>Barcode</option>
+                    <option value="location" <%= $search_type eq 'location' ? 'selected' : '' %>>Location</option>
+                </select>
+            </div>
+            <button type="submit">Search</button>
+        </div>
+    </form>
+</div>
+
+% if (defined $query) {
+<div class="panel" style="margin-top: 2rem;">
+    <h2>Search Results for "<%= $query %>" in <%= ucfirst($search_type) %>s</h2>
+
+    % if (my $items = $results->{items}) {
+        % if (@$items) {
+            <ul>
+            % for my $item (@$items) {
+                <li><a href="<%= url_for('item_show', {id => $item->id}) %>"><%= $item->short_description %></a></li>
+            % }
+            </ul>
+        % } else {
+            <p>No items found matching your query.</p>
+        % }
+    % }
+
+    % if (my $item_tree = $results->{item_tree}) {
+        % if (@$item_tree) {
+            <ul style="list-style-type: none; padding-left: 0;">
+            % for my $node (@$item_tree) {
+                <li style="padding-left: <%= $node->{level} * 20 %>px; margin-bottom: 5px; <%= $node->{is_parent} ? 'font-weight: bold;' : '' %>">
+                    <a href="<%= url_for('item_show', {id => $node->{item}->id}) %>"><%= $node->{item}->short_description %></a>
+                </li>
+            % }
+            </ul>
+        % } else {
+            <p>No items found with that tag.</p>
+        % }
+    % }
+
+    % if (my $locations = $results->{locations}) {
+        % if (@$locations) {
+            <ul>
+            % for my $loc (@$locations) {
+                <li><a href="<%= url_for('location_show', {id => $loc->id}) %>"><%= $loc->full_name %></a> (<%= $loc->short_name %>)</li>
+            % }
+            </ul>
+        % } else {
+            <p>No locations found matching your query.</p>
+        % }
+    % }
+
+    % if (my $not_found = $results->{not_found}) {
+        <p><%= $not_found %></p>
+    % }
+</div>
+% }
 
 @@ gtins.html.ep
 % layout 'layout';
